@@ -1,0 +1,333 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Google Maps 口コミ抽出ツール</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .tab-content { display: none; }
+        .tab-content.active { display: block; }
+        .tab-btn.active {
+            background-color: #3b82f6;
+            color: white;
+        }
+    </style>
+</head>
+<body class="bg-gray-100 min-h-screen">
+    <div class="container mx-auto px-4 py-8 max-w-3xl">
+        <!-- ヘッダー -->
+        <div class="text-center mb-8">
+            <h1 class="text-3xl font-bold text-gray-800 mb-2">Google Maps 口コミ抽出ツール</h1>
+            <p class="text-gray-600">Google Mapsから口コミを取得してCSVでダウンロード</p>
+        </div>
+
+        <!-- メインカード -->
+        <div class="bg-white rounded-lg shadow-lg p-6">
+            <!-- タブナビゲーション -->
+            <div class="flex border-b mb-6">
+                <button class="tab-btn active flex-1 py-3 px-4 text-center font-medium rounded-t-lg transition" data-tab="url">
+                    URL入力
+                </button>
+                <button class="tab-btn flex-1 py-3 px-4 text-center font-medium rounded-t-lg transition hover:bg-gray-100" data-tab="search">
+                    店舗検索
+                </button>
+                <button class="tab-btn flex-1 py-3 px-4 text-center font-medium rounded-t-lg transition hover:bg-gray-100" data-tab="csv">
+                    CSV一括
+                </button>
+            </div>
+
+            <!-- URL入力タブ -->
+            <div id="tab-url" class="tab-content active">
+                <form id="form-url" class="space-y-4">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Google MapsのURL</label>
+                        <input type="url" id="input-url"
+                            class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                            placeholder="https://www.google.com/maps/place/..."
+                            required>
+                        <p class="text-xs text-gray-500 mt-1">Google Mapsで店舗を開き、URLをコピーしてください</p>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">取得件数</label>
+                        <input type="number" id="count-url" value="50" min="1" max="500"
+                            class="w-32 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+                        <span class="text-gray-500 ml-2">件</span>
+                    </div>
+                    <button type="submit"
+                        class="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-3 px-4 rounded-lg transition">
+                        口コミを取得
+                    </button>
+                </form>
+            </div>
+
+            <!-- 店舗検索タブ -->
+            <div id="tab-search" class="tab-content">
+                <form id="form-search" class="space-y-4">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">検索キーワード</label>
+                        <input type="text" id="input-search"
+                            class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                            placeholder="例: スターバックス 渋谷駅前"
+                            required>
+                        <p class="text-xs text-gray-500 mt-1">店舗名や住所を入力してください</p>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">取得件数</label>
+                        <input type="number" id="count-search" value="50" min="1" max="500"
+                            class="w-32 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+                        <span class="text-gray-500 ml-2">件</span>
+                    </div>
+                    <button type="submit"
+                        class="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-3 px-4 rounded-lg transition">
+                        口コミを取得
+                    </button>
+                </form>
+            </div>
+
+            <!-- CSV一括タブ -->
+            <div id="tab-csv" class="tab-content">
+                <form id="form-csv" class="space-y-4">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">CSVファイル</label>
+                        <input type="file" id="input-csv" accept=".csv"
+                            class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                            required>
+                        <p class="text-xs text-gray-500 mt-1">
+                            CSVには「URL」または「店舗名」「住所」列を含めてください
+                        </p>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">各店舗の取得件数</label>
+                        <input type="number" id="count-csv" value="30" min="1" max="100"
+                            class="w-32 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+                        <span class="text-gray-500 ml-2">件</span>
+                    </div>
+                    <button type="submit"
+                        class="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-3 px-4 rounded-lg transition">
+                        一括取得開始
+                    </button>
+                </form>
+            </div>
+
+            <!-- 進捗表示エリア -->
+            <div id="progress-area" class="mt-6 hidden">
+                <div class="border-t pt-4">
+                    <div class="flex justify-between text-sm text-gray-600 mb-2">
+                        <span id="progress-message">処理中...</span>
+                        <span id="progress-percent">0%</span>
+                    </div>
+                    <div class="w-full bg-gray-200 rounded-full h-3">
+                        <div id="progress-bar" class="bg-blue-600 h-3 rounded-full transition-all duration-300" style="width: 0%"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 結果表示エリア -->
+            <div id="result-area" class="mt-6 hidden">
+                <div class="border-t pt-4">
+                    <div class="bg-green-50 border border-green-200 rounded-lg p-4 mb-4">
+                        <div class="flex items-center">
+                            <svg class="w-5 h-5 text-green-500 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                                <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/>
+                            </svg>
+                            <span id="result-message" class="text-green-700 font-medium"></span>
+                        </div>
+                        <div id="place-info" class="mt-2 text-sm text-gray-600"></div>
+                    </div>
+                    <button id="download-btn"
+                        class="w-full bg-green-600 hover:bg-green-700 text-white font-medium py-3 px-4 rounded-lg transition flex items-center justify-center">
+                        <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
+                        </svg>
+                        CSVをダウンロード
+                    </button>
+                </div>
+            </div>
+
+            <!-- エラー表示エリア -->
+            <div id="error-area" class="mt-6 hidden">
+                <div class="bg-red-50 border border-red-200 rounded-lg p-4">
+                    <div class="flex items-center">
+                        <svg class="w-5 h-5 text-red-500 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                            <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd"/>
+                        </svg>
+                        <span id="error-message" class="text-red-700"></span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- フッター -->
+        <div class="text-center mt-8 text-gray-500 text-sm">
+            <p>Google Maps Review Scraper v1.0</p>
+        </div>
+    </div>
+
+    <script>
+        let currentTaskId = null;
+        let pollInterval = null;
+
+        // タブ切り替え
+        document.querySelectorAll('.tab-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+                document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+                btn.classList.add('active');
+                document.getElementById('tab-' + btn.dataset.tab).classList.add('active');
+                hideResults();
+            });
+        });
+
+        // URL入力フォーム
+        document.getElementById('form-url').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const url = document.getElementById('input-url').value;
+            const count = parseInt(document.getElementById('count-url').value);
+            await startScraping('/api/scrape/url', { url, count });
+        });
+
+        // 検索フォーム
+        document.getElementById('form-search').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const query = document.getElementById('input-search').value;
+            const count = parseInt(document.getElementById('count-search').value);
+            await startScraping('/api/scrape/search', { query, count });
+        });
+
+        // CSV一括フォーム
+        document.getElementById('form-csv').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const fileInput = document.getElementById('input-csv');
+            const count = parseInt(document.getElementById('count-csv').value);
+
+            if (!fileInput.files[0]) return;
+
+            const formData = new FormData();
+            formData.append('file', fileInput.files[0]);
+            formData.append('count', count);
+
+            await startScrapingFormData('/api/scrape/csv', formData);
+        });
+
+        // ダウンロードボタン
+        document.getElementById('download-btn').addEventListener('click', () => {
+            if (currentTaskId) {
+                window.location.href = '/api/download/' + currentTaskId;
+            }
+        });
+
+        // スクレイピング開始（JSON）
+        async function startScraping(endpoint, data) {
+            showProgress();
+            hideResults();
+
+            try {
+                const response = await fetch(endpoint, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(data)
+                });
+
+                const result = await response.json();
+                currentTaskId = result.task_id;
+                startPolling();
+
+            } catch (error) {
+                showError('リクエストの送信に失敗しました: ' + error.message);
+            }
+        }
+
+        // スクレイピング開始（FormData）
+        async function startScrapingFormData(endpoint, formData) {
+            showProgress();
+            hideResults();
+
+            try {
+                const response = await fetch(endpoint, {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const result = await response.json();
+                currentTaskId = result.task_id;
+                startPolling();
+
+            } catch (error) {
+                showError('リクエストの送信に失敗しました: ' + error.message);
+            }
+        }
+
+        // ポーリング開始
+        function startPolling() {
+            if (pollInterval) clearInterval(pollInterval);
+
+            pollInterval = setInterval(async () => {
+                try {
+                    const response = await fetch('/api/status/' + currentTaskId);
+                    const status = await response.json();
+
+                    updateProgress(status.message, status.progress);
+
+                    if (status.status === 'completed') {
+                        clearInterval(pollInterval);
+                        showResult(status);
+                    } else if (status.status === 'error') {
+                        clearInterval(pollInterval);
+                        showError(status.message);
+                    }
+
+                } catch (error) {
+                    clearInterval(pollInterval);
+                    showError('ステータスの取得に失敗しました');
+                }
+            }, 2000);
+        }
+
+        // 進捗表示
+        function showProgress() {
+            document.getElementById('progress-area').classList.remove('hidden');
+            document.getElementById('result-area').classList.add('hidden');
+            document.getElementById('error-area').classList.add('hidden');
+        }
+
+        function updateProgress(message, percent) {
+            document.getElementById('progress-message').textContent = message;
+            document.getElementById('progress-percent').textContent = percent + '%';
+            document.getElementById('progress-bar').style.width = percent + '%';
+        }
+
+        // 結果表示
+        function showResult(status) {
+            document.getElementById('progress-area').classList.add('hidden');
+            document.getElementById('result-area').classList.remove('hidden');
+            document.getElementById('result-message').textContent = status.message;
+
+            const placeInfo = document.getElementById('place-info');
+            if (status.place_info && status.place_info.name !== '不明') {
+                placeInfo.innerHTML = `
+                    店舗: ${status.place_info.name}<br>
+                    平均評価: ${status.place_info.avg_rating} |
+                    総レビュー数: ${status.place_info.review_count}件
+                `;
+            } else {
+                placeInfo.innerHTML = '';
+            }
+        }
+
+        // エラー表示
+        function showError(message) {
+            document.getElementById('progress-area').classList.add('hidden');
+            document.getElementById('error-area').classList.remove('hidden');
+            document.getElementById('error-message').textContent = message;
+        }
+
+        // 結果を隠す
+        function hideResults() {
+            document.getElementById('progress-area').classList.add('hidden');
+            document.getElementById('result-area').classList.add('hidden');
+            document.getElementById('error-area').classList.add('hidden');
+        }
+    </script>
+</body>
+</html>
