@@ -153,58 +153,39 @@ class GoogleMapsReviewScraper:
                 current_reviews = driver.find_elements(By.CSS_SELECTOR, review_selectors)
                 reviews_loaded = len(current_reviews)
 
-                # スクロール高さを取得
-                current_scroll_height = driver.execute_script("return arguments[0].scrollHeight", scrollable_div)
-                current_scroll_pos = driver.execute_script("return arguments[0].scrollTop", scrollable_div)
-
-                # 定期的に詳細ログ
-                if scroll_attempts % 5 == 0:
+                # 定期的に詳細ログ（元のコードと同じ: 20回ごと）
+                if scroll_attempts % 20 == 0:
                     progress = min(32 + int((reviews_loaded / target_count) * 38), 70)
-                    self._update_progress(f"読込中: {reviews_loaded}/{target_count}件 (試行{scroll_attempts})", progress)
-                    self._debug(f"scroll_attempt_{scroll_attempts}", f"reviews={reviews_loaded}, height={current_scroll_height}, pos={current_scroll_pos}")
+                    self._update_progress(f"読込中: {reviews_loaded}/{target_count}件", progress)
 
                 if reviews_loaded >= target_count:
                     self._debug("target_reached", f"loaded={reviews_loaded}, target={target_count}")
                     break
 
-                # スクロール実行
+                # スクロール実行（元のコードと完全一致: scrollTo使用）
                 driver.execute_script(
-                    "arguments[0].scrollTop = arguments[0].scrollHeight;",
+                    "arguments[0].scrollTo(0, arguments[0].scrollHeight);",
                     scrollable_div
                 )
                 time.sleep(1.5)
 
-                # 追加のスクロール
-                for i in range(5):
-                    driver.execute_script("arguments[0].scrollBy(0, 1000);", scrollable_div)
+                # 追加のスクロール（元のコードと完全一致: 800px）
+                for _ in range(5):
+                    driver.execute_script("arguments[0].scrollBy(0, 800);", scrollable_div)
                     time.sleep(0.3)
 
-                time.sleep(2.0)
+                time.sleep(2)
 
                 # 新しい口コミ数を確認
                 new_reviews = driver.find_elements(By.CSS_SELECTOR, review_selectors)
-                new_scroll_height = driver.execute_script("return arguments[0].scrollHeight", scrollable_div)
 
-                # 変化がない場合のカウント
-                if len(new_reviews) == reviews_loaded and new_scroll_height == current_scroll_height:
+                # 変化がない場合のカウント（元のコードと完全一致: レビュー数のみチェック）
+                if len(new_reviews) == reviews_loaded:
                     no_change_count += 1
-                    self._debug(f"no_change_{no_change_count}", f"reviews={reviews_loaded}, height={new_scroll_height}")
-
-                    if no_change_count >= 20:  # 元のコードと同じ
-                        # 本当に終わりか確認するため、追加でスクロール
-                        self._update_progress(f"追加確認中... ({reviews_loaded}件)", 68)
-                        for _ in range(5):
-                            driver.execute_script("arguments[0].scrollTop = arguments[0].scrollHeight + 5000;", scrollable_div)
-                            time.sleep(1.0)
-
-                        final_reviews = driver.find_elements(By.CSS_SELECTOR, review_selectors)
-                        if len(final_reviews) == reviews_loaded:
-                            self._update_progress(f"これ以上の口コミなし: {reviews_loaded}件", 70)
-                            self._debug("scroll_finished", f"final_count={reviews_loaded}, attempts={scroll_attempts}")
-                            break
-                        else:
-                            no_change_count = 0  # まだあったのでリセット
-                            self._debug("found_more_after_check", f"new={len(final_reviews)}, old={reviews_loaded}")
+                    if no_change_count >= 20:
+                        self._update_progress(f"これ以上読み込めません（最終: {len(new_reviews)}件）", 70)
+                        self._debug("scroll_finished", f"final_count={reviews_loaded}, attempts={scroll_attempts}")
+                        break
                 else:
                     no_change_count = 0
 
