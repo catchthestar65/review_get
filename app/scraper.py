@@ -508,7 +508,7 @@ class GoogleMapsReviewScraper:
             is_search_page = '/maps/search/' in url or ('/maps/place/' in url and not has_coordinates)
             store_found = False
 
-            self._debug(f"URL判定: has_coordinates={has_coordinates}, is_search_page={is_search_page}")
+            self._debug("URL判定", f"has_coordinates={has_coordinates}, is_search_page={is_search_page}")
 
             if is_search_page:
                 self._update_progress("検索結果から店舗を選択中...", 18)
