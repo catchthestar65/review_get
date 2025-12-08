@@ -235,6 +235,7 @@
 
     <script>
         let currentTaskId = null;
+        let currentData = null;  // 取得したデータを保持
         let pollInterval = null;
         let startTime = null;
         let timerInterval = null;
@@ -281,10 +282,31 @@
             await startScrapingFormData('/api/scrape/csv', formData);
         });
 
-        // ダウンロードボタン
+        // ダウンロードボタン - フロントエンドで直接CSVを生成
         document.getElementById('download-btn').addEventListener('click', () => {
-            if (currentTaskId) {
-                window.location.href = '/api/download/' + currentTaskId;
+            if (currentData && currentData.length > 0) {
+                // CSVを生成
+                const headers = Object.keys(currentData[0]);
+                const csvRows = [headers.join(',')];
+
+                currentData.forEach(row => {
+                    const values = headers.map(header => {
+                        const value = row[header] || '';
+                        // 値にカンマや改行が含まれる場合はダブルクォートで囲む
+                        const escaped = String(value).replace(/"/g, '""');
+                        if (escaped.includes(',') || escaped.includes('\n') || escaped.includes('"')) {
+                            return `"${escaped}"`;
+                        }
+                        return escaped;
+                    });
+                    csvRows.push(values.join(','));
+                });
+
+                const csvContent = csvRows.join('\n');
+                const timestamp = new Date().toISOString().slice(0, 19).replace(/[:-]/g, '').replace('T', '_');
+                downloadCSV(csvContent, `google_maps_reviews_${timestamp}.csv`);
+            } else {
+                alert('ダウンロードするデータがありません');
             }
         });
 
@@ -448,6 +470,9 @@
             if (timerInterval) clearInterval(timerInterval);
             startTime = null;
 
+            // データを保存（フロントエンドでCSV生成するため）
+            currentData = status.data;
+
             document.getElementById('progress-area').classList.add('hidden');
             document.getElementById('result-area').classList.remove('hidden');
             document.getElementById('result-message').textContent = status.message;
@@ -480,6 +505,9 @@
             // タイマー停止
             if (timerInterval) clearInterval(timerInterval);
             startTime = null;
+
+            // データをクリア
+            currentData = null;
 
             document.getElementById('progress-area').classList.add('hidden');
             document.getElementById('result-area').classList.add('hidden');
