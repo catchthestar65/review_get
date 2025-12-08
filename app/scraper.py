@@ -344,6 +344,21 @@ class GoogleMapsReviewScraper:
             driver.get(url)
             time.sleep(10)
 
+            # デバッグ: ページタイトルとURLを記録
+            self._update_progress(f"ページ読込完了: {driver.title[:30]}...", 16)
+
+            # Cookieバナーを閉じる
+            try:
+                cookie_buttons = driver.find_elements(By.CSS_SELECTOR,
+                    'button[aria-label*="すべて拒否"], button[aria-label*="同意"], form[action*="consent"] button')
+                for btn in cookie_buttons:
+                    if btn.is_displayed():
+                        driver.execute_script("arguments[0].click();", btn)
+                        time.sleep(2)
+                        break
+            except:
+                pass
+
             # 検索結果ページの場合、最初の店舗をクリック
             if '/maps/search/' in url:
                 self._update_progress("検索結果から店舗を選択中...", 18)
