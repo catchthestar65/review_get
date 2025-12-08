@@ -433,23 +433,51 @@ class GoogleMapsReviewScraper:
                 page_title = driver.title if driver.title else "タイトルなし"
                 self._update_progress(f"同意後タイトル: {page_title[:25]}", 18)
 
-            # 検索結果ページの場合、最初の店舗をクリック
-            if '/maps/search/' in url:
+            # 検索結果ページ、または店舗が表示されていない場合
+            is_search_page = '/maps/search/' in url or '/maps/place/' in url
+            store_found = False
+
+            if is_search_page:
                 self._update_progress("検索結果から店舗を選択中...", 18)
+
+                # まず店舗リストから最初の店舗をクリック
                 try:
-                    first_result = WebDriverWait(driver, 15).until(
+                    # 方法1: 店舗カードをクリック
+                    first_result = WebDriverWait(driver, 10).until(
                         EC.presence_of_element_located((By.CSS_SELECTOR, 'a[href*="/maps/place/"]'))
                     )
                     driver.execute_script("arguments[0].click();", first_result)
+                    store_found = True
                     time.sleep(8)
                 except:
+                    pass
+
+                if not store_found:
                     try:
+                        # 方法2: div.Nv2PKをクリック
                         results = driver.find_elements(By.CSS_SELECTOR, 'div.Nv2PK')
                         if results:
                             driver.execute_script("arguments[0].click();", results[0])
+                            store_found = True
                             time.sleep(8)
                     except:
                         pass
+
+                if not store_found:
+                    try:
+                        # 方法3: 任意のクリック可能な結果
+                        results = driver.find_elements(By.CSS_SELECTOR, '[role="article"], .fontHeadlineSmall')
+                        if results:
+                            driver.execute_script("arguments[0].click();", results[0])
+                            store_found = True
+                            time.sleep(8)
+                    except:
+                        pass
+
+                if store_found:
+                    self._update_progress("店舗を選択しました", 19)
+                else:
+                    self._update_progress("店舗の選択に失敗", 19)
 
             # 店舗情報取得
             self._update_progress("店舗情報を取得中...", 20)
