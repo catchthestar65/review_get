@@ -43,10 +43,24 @@ class GoogleMapsReviewScraper:
         chrome_options.add_argument('--no-sandbox')
         chrome_options.add_argument('--disable-dev-shm-usage')
         chrome_options.add_argument('--disable-gpu')
-        chrome_options.add_argument('--window-size=1920,1080')
+        chrome_options.add_argument('--window-size=1280,720')
         chrome_options.add_argument('--lang=ja-JP')
         chrome_options.add_argument('--disable-blink-features=AutomationControlled')
         chrome_options.add_argument('user-agent=Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36')
+
+        # メモリ節約設定（Render 512MB対応）
+        chrome_options.add_argument('--disable-extensions')
+        chrome_options.add_argument('--disable-plugins')
+        chrome_options.add_argument('--disable-software-rasterizer')
+        chrome_options.add_argument('--disable-background-networking')
+        chrome_options.add_argument('--disable-default-apps')
+        chrome_options.add_argument('--disable-sync')
+        chrome_options.add_argument('--disable-translate')
+        chrome_options.add_argument('--single-process')
+        chrome_options.add_argument('--no-zygote')
+        chrome_options.add_argument('--renderer-process-limit=1')
+        chrome_options.add_argument('--memory-pressure-off')
+        chrome_options.add_argument('--js-flags=--max-old-space-size=256')
 
         # 画像読み込み無効化で高速化
         prefs = {

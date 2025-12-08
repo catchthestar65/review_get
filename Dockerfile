@@ -6,14 +6,13 @@ ENV PYTHONUNBUFFERED=1
 ENV CHROME_BIN=/usr/bin/chromium
 ENV CHROMEDRIVER_PATH=/usr/bin/chromedriver
 
-# Chromiumと依存関係をインストール
+# Chromiumと依存関係をインストール（軽量化）
 RUN apt-get update && apt-get install -y --no-install-recommends \
     chromium \
     chromium-driver \
-    fonts-ipafont-gothic \
-    fonts-ipafont-mincho \
     fonts-noto-cjk \
-    && rm -rf /var/lib/apt/lists/*
+    && rm -rf /var/lib/apt/lists/* \
+    && apt-get clean
 
 # 作業ディレクトリ
 WORKDIR /app
