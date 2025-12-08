@@ -31,7 +31,7 @@ class GoogleMapsReviewScraper:
             self.progress_callback(message, progress)
 
     def setup_driver(self) -> webdriver.Chrome:
-        """Chrome WebDriverのセットアップ"""
+        """Chrome WebDriverのセットアップ（元のeminal_mac_完全版と同じ設定）"""
         self._update_progress("ChromeDriverをセットアップ中...", 5)
 
         chrome_options = Options()
@@ -39,42 +39,19 @@ class GoogleMapsReviewScraper:
         # ヘッドレスモード
         chrome_options.add_argument('--headless=new')
 
-        # 基本設定
+        # 基本設定（元のeminal_mac_完全版と同じ）
         chrome_options.add_argument('--no-sandbox')
         chrome_options.add_argument('--disable-dev-shm-usage')
         chrome_options.add_argument('--disable-gpu')
         chrome_options.add_argument('--window-size=1920,1080')
         chrome_options.add_argument('--lang=ja-JP')
         chrome_options.add_argument('--disable-blink-features=AutomationControlled')
+        chrome_options.add_argument('user-agent=Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36')
 
-        # より本物らしいUser-Agent
-        chrome_options.add_argument('user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36')
-
-        # メモリ節約設定
-        chrome_options.add_argument('--disable-extensions')
-        chrome_options.add_argument('--disable-plugins')
-        chrome_options.add_argument('--disable-software-rasterizer')
-        chrome_options.add_argument('--disable-background-networking')
-        chrome_options.add_argument('--disable-default-apps')
-        chrome_options.add_argument('--disable-sync')
-        chrome_options.add_argument('--disable-translate')
-        chrome_options.add_argument('--single-process')
-        chrome_options.add_argument('--no-zygote')
-        chrome_options.add_argument('--renderer-process-limit=1')
-        chrome_options.add_argument('--memory-pressure-off')
-        chrome_options.add_argument('--js-flags=--max-old-space-size=512')
-
-        # 追加の検出回避設定
-        chrome_options.add_argument('--disable-infobars')
-        chrome_options.add_argument('--ignore-certificate-errors')
-        chrome_options.add_argument('--allow-running-insecure-content')
-
-        # 画像を有効化（Google Mapsで必要な場合がある）
+        # 画像読み込み無効化で高速化（元のeminal_mac_完全版と同じ）
         prefs = {
             'intl.accept_languages': 'ja,ja-JP',
-            'profile.managed_default_content_settings.images': 1,
-            'credentials_enable_service': False,
-            'profile.password_manager_enabled': False
+            'profile.default_content_setting_values': {'images': 2}
         }
         chrome_options.add_experimental_option('prefs', prefs)
         chrome_options.add_experimental_option('excludeSwitches', ['enable-logging', 'enable-automation'])
@@ -94,23 +71,7 @@ class GoogleMapsReviewScraper:
             service = Service(ChromeDriverManager().install())
 
         driver = webdriver.Chrome(service=service, options=chrome_options)
-        driver.set_page_load_timeout(60)
-
-        # WebDriver検出を回避するJavaScript
-        driver.execute_cdp_cmd('Page.addScriptToEvaluateOnNewDocument', {
-            'source': '''
-                Object.defineProperty(navigator, 'webdriver', {
-                    get: () => undefined
-                });
-                Object.defineProperty(navigator, 'plugins', {
-                    get: () => [1, 2, 3, 4, 5]
-                });
-                Object.defineProperty(navigator, 'languages', {
-                    get: () => ['ja-JP', 'ja', 'en-US', 'en']
-                });
-                window.chrome = { runtime: {} };
-            '''
-        })
+        driver.set_page_load_timeout(30)
 
         self._update_progress("ChromeDriverの起動完了", 10)
         return driver
