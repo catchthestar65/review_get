@@ -344,6 +344,26 @@ class GoogleMapsReviewScraper:
             driver.get(url)
             time.sleep(10)
 
+            # 検索結果ページの場合、最初の店舗をクリック
+            if '/maps/search/' in url:
+                self._update_progress("検索結果から店舗を選択中...", 18)
+                try:
+                    # 検索結果の最初の店舗をクリック
+                    first_result = WebDriverWait(driver, 10).until(
+                        EC.presence_of_element_located((By.CSS_SELECTOR, 'a[href*="/maps/place/"]'))
+                    )
+                    driver.execute_script("arguments[0].click();", first_result)
+                    time.sleep(8)
+                except:
+                    # 別のセレクタを試す
+                    try:
+                        results = driver.find_elements(By.CSS_SELECTOR, 'div.Nv2PK')
+                        if results:
+                            driver.execute_script("arguments[0].click();", results[0])
+                            time.sleep(8)
+                    except:
+                        pass
+
             # 店舗情報取得
             self._update_progress("店舗情報を取得中...", 20)
             self.get_place_info(driver)
