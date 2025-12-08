@@ -365,6 +365,16 @@ class GoogleMapsReviewScraper:
                 separator = '&' if '?' in url else '?'
                 url = f"{url}{separator}hl=ja"
 
+            # /maps/place/店舗名 形式を /maps/search/店舗名 形式に変換
+            # （座標がないplace URLは検索として処理する方が確実）
+            if '/maps/place/' in url and '@' not in url and 'data=' not in url:
+                # URLから店舗名を抽出
+                place_match = re.search(r'/maps/place/([^/?]+)', url)
+                if place_match:
+                    place_query = urllib.parse.unquote(place_match.group(1).replace('+', ' '))
+                    url = f"https://www.google.com/maps/search/{urllib.parse.quote(place_query)}"
+                    self._update_progress(f"検索URLに変換: {place_query[:20]}", 14)
+
             self._update_progress(f"ページにアクセス中...", 15)
             driver.get(url)
             time.sleep(10)
