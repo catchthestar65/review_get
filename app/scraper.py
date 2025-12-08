@@ -91,18 +91,15 @@ class GoogleMapsReviewScraper:
     def scroll_reviews(self, driver, target_count: int) -> int:
         """口コミをスクロールして読み込む"""
         try:
-            # スクロール可能な領域を探す
+            # スクロール可能な領域を探す（元のeminal_mac_完全版と同じセレクタ順）
             scrollable_div = None
             found_selector = None
             selectors = [
                 'div.m6QErb.DxyBCb.kA9KIf.dS8AEf.XiKgde',
                 'div.m6QErb.XiKgde',
                 'div.m6QErb.DxyBCb',
-                'div.m6QErb.DxyBCb.kA9KIf.dS8AEf',
-                'div[role="feed"]',
-                'div.m6QErb',
-                'div.section-scrollbox',
                 'div[role="main"]',
+                'div.m6QErb'
             ]
 
             self._debug("scroll_selectors_count", len(selectors))
@@ -118,7 +115,7 @@ class GoogleMapsReviewScraper:
                             client_height = driver.execute_script("return arguments[0].clientHeight", elem)
                             self._debug(f"elem_{idx}_heights", f"scroll={scroll_height}, client={client_height}")
 
-                            if scroll_height > client_height * 1.1 and scroll_height > 500:
+                            if scroll_height > client_height * 1.1:
                                 scrollable_div = elem
                                 found_selector = selector
                                 self._debug("found_scrollable", f"{selector}, heights: {scroll_height}/{client_height}")
@@ -143,12 +140,12 @@ class GoogleMapsReviewScraper:
 
             reviews_loaded = 0
             scroll_attempts = 0
-            max_attempts = 200  # 最大試行回数
+            max_attempts = 500  # 元のコードと同じ
             no_change_count = 0
             last_scroll_height = 0
 
-            # 口コミ要素のセレクタ（複数パターン）
-            review_selectors = 'div[data-review-id], div.jftiEf.fontBodyMedium, div.jftiEf'
+            # 口コミ要素のセレクタ（元のeminal_mac_完全版と同じ - div.jftiEf単体は広すぎるので除外）
+            review_selectors = 'div[data-review-id], div.jftiEf.fontBodyMedium'
 
             self._update_progress(f"スクロール開始... 目標: {target_count}件", 32)
 
@@ -193,7 +190,7 @@ class GoogleMapsReviewScraper:
                     no_change_count += 1
                     self._debug(f"no_change_{no_change_count}", f"reviews={reviews_loaded}, height={new_scroll_height}")
 
-                    if no_change_count >= 10:
+                    if no_change_count >= 20:  # 元のコードと同じ
                         # 本当に終わりか確認するため、追加でスクロール
                         self._update_progress(f"追加確認中... ({reviews_loaded}件)", 68)
                         for _ in range(5):
@@ -255,7 +252,7 @@ class GoogleMapsReviewScraper:
 
             if not review_elements:
                 review_elements = driver.find_elements(By.CSS_SELECTOR,
-                    'div[data-review-id], div.jftiEf.fontBodyMedium, div.jftiEf')
+                    'div[data-review-id], div.jftiEf.fontBodyMedium')
 
             if not review_elements:
                 self._update_progress("抽出対象の口コミなし", 75)
@@ -601,7 +598,7 @@ class GoogleMapsReviewScraper:
 
             # 現在のページの口コミ要素を事前確認
             initial_reviews = driver.find_elements(By.CSS_SELECTOR,
-                'div[data-review-id], div.jftiEf.fontBodyMedium, div.jftiEf')
+                'div[data-review-id], div.jftiEf.fontBodyMedium')
             self._update_progress(f"初期口コミ数: {len(initial_reviews)}件", 29)
 
             # 口コミをスクロールして読み込み
@@ -612,7 +609,7 @@ class GoogleMapsReviewScraper:
                 # スクロールできなかった場合、現在表示されている口コミを取得
                 self._update_progress("スクロールなしで口コミを取得中...", 73)
                 self.found_review_elements = driver.find_elements(By.CSS_SELECTOR,
-                    'div[data-review-id], div.jftiEf.fontBodyMedium, div.jftiEf')
+                    'div[data-review-id], div.jftiEf.fontBodyMedium')
                 loaded_count = len(self.found_review_elements)
                 if loaded_count == 0:
                     self._update_progress("口コミが見つかりませんでした", 100)
