@@ -124,30 +124,33 @@ class GoogleMapsReviewScraper:
                 current_reviews = driver.find_elements(By.CSS_SELECTOR, review_selectors)
                 reviews_loaded = len(current_reviews)
 
-                if scroll_attempts % 15 == 0:
+                if scroll_attempts % 10 == 0:
                     progress = min(32 + int((reviews_loaded / target_count) * 38), 70)
                     self._update_progress(f"読込中: {reviews_loaded}/{target_count}件", progress)
 
                 if reviews_loaded >= target_count:
                     break
 
+                # スクロールして新しい口コミを読み込む
                 driver.execute_script(
                     "arguments[0].scrollTo(0, arguments[0].scrollHeight);",
                     scrollable_div
                 )
-                time.sleep(1.0)
+                time.sleep(2.0)  # 待機時間を長くして確実に読み込む
 
+                # 追加の小さなスクロールで読み込みを促す
                 for _ in range(3):
-                    driver.execute_script("arguments[0].scrollBy(0, 500);", scrollable_div)
-                    time.sleep(0.2)
+                    driver.execute_script("arguments[0].scrollBy(0, 800);", scrollable_div)
+                    time.sleep(0.5)
 
-                time.sleep(1.5)
+                time.sleep(2.5)  # 読み込み待ち時間を長く
 
                 new_reviews = driver.find_elements(By.CSS_SELECTOR, review_selectors)
 
                 if len(new_reviews) == reviews_loaded:
                     no_change_count += 1
-                    if no_change_count >= 15:
+                    # より多くの試行を許容（Render環境での遅延対応）
+                    if no_change_count >= 20:
                         self._update_progress(f"これ以上の口コミなし: {reviews_loaded}件", 70)
                         break
                 else:
