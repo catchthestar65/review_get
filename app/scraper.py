@@ -304,18 +304,25 @@ class GoogleMapsReviewScraper:
     def get_place_info(self, driver) -> Dict:
         """店舗情報を取得"""
         try:
+            # デバッグ用：ページタイトル
+            debug_title = driver.title if driver.title else "タイトルなし"
+
             # 店舗名
             place_name = "不明"
             try:
                 h1_elem = driver.find_element(By.TAG_NAME, 'h1')
                 place_name = h1_elem.text.strip()
+                if not place_name:
+                    place_name = f"(h1空) {debug_title[:30]}"
             except:
                 try:
                     page_title = driver.title
                     if " - Google" in page_title:
                         place_name = page_title.split(" - Google")[0].strip()
+                    else:
+                        place_name = f"(h1なし) {debug_title[:30]}"
                 except:
-                    pass
+                    place_name = f"(エラー) {debug_title[:30]}"
 
             # 平均評価
             avg_rating = "不明"
@@ -360,21 +367,37 @@ class GoogleMapsReviewScraper:
 
             self._update_progress(f"ページにアクセス中...", 15)
             driver.get(url)
-            time.sleep(8)
+            time.sleep(10)
 
             # デバッグ: ページタイトルとURLを記録
             page_title = driver.title if driver.title else "タイトルなし"
-            self._update_progress(f"読込: {page_title[:25]}...", 16)
+            current_url = driver.current_url
+            self._update_progress(f"タイトル: {page_title[:30]}", 16)
 
-            # Cookieバナーを閉じる（複数のパターン対応）
+            # デバッグ: consent/同意ページかチェック
+            if 'consent' in current_url.lower() or 'consent' in page_title.lower():
+                self._update_progress("同意ページ検出、処理中...", 17)
+
+            # Cookieバナー/同意ページを閉じる（複数のパターン対応）
+            consent_clicked = False
             try:
                 cookie_selectors = [
+                    # 日本語
+                    'button[aria-label*="すべて同意"]',
+                    'button[aria-label*="同意する"]',
                     'button[aria-label*="すべて拒否"]',
-                    'button[aria-label*="同意"]',
+                    # 英語
+                    'button[aria-label*="Accept all"]',
+                    'button[aria-label*="Reject all"]',
                     'button[aria-label*="Accept"]',
-                    'button[aria-label*="Reject"]',
+                    # フォームボタン
+                    'form[action*="consent"] button[value="1"]',
                     'form[action*="consent"] button',
-                    'button.VfPpkd-LgbsSe[data-mdc-dialog-action="accept"]'
+                    # 汎用
+                    'button.VfPpkd-LgbsSe[data-mdc-dialog-action="accept"]',
+                    'button[jsname="higCR"]',
+                    'button[jsname="b3VHJd"]',
+                    # XPath fallback
                 ]
                 for sel in cookie_selectors:
                     try:
@@ -382,12 +405,33 @@ class GoogleMapsReviewScraper:
                         for btn in btns:
                             if btn.is_displayed():
                                 driver.execute_script("arguments[0].click();", btn)
-                                time.sleep(2)
+                                consent_clicked = True
+                                self._update_progress("同意ボタンをクリック", 17)
+                                time.sleep(3)
                                 break
+                        if consent_clicked:
+                            break
                     except:
                         continue
+
+                # XPathでも試す
+                if not consent_clicked:
+                    try:
+                        accept_btn = driver.find_element(By.XPATH, '//button[contains(text(), "同意") or contains(text(), "Accept") or contains(text(), "すべて")]')
+                        if accept_btn.is_displayed():
+                            driver.execute_script("arguments[0].click();", accept_btn)
+                            self._update_progress("XPathで同意ボタンクリック", 17)
+                            time.sleep(3)
+                    except:
+                        pass
             except:
                 pass
+
+            # 同意後、再度ページタイトル確認
+            if consent_clicked:
+                time.sleep(2)
+                page_title = driver.title if driver.title else "タイトルなし"
+                self._update_progress(f"同意後タイトル: {page_title[:25]}", 18)
 
             # 検索結果ページの場合、最初の店舗をクリック
             if '/maps/search/' in url:
