@@ -502,9 +502,13 @@ class GoogleMapsReviewScraper:
                 page_title = driver.title if driver.title else "タイトルなし"
                 self._update_progress(f"同意後タイトル: {page_title[:25]}", 18)
 
-            # 検索結果ページ、または店舗が表示されていない場合
-            is_search_page = '/maps/search/' in url or '/maps/place/' in url
+            # 検索結果ページ判定（座標付きURLは直接店舗ページなので除外）
+            # 座標付きURL例: /@35.6931021,139.6988854,17z/
+            has_coordinates = '/@' in url and 'z/' in url
+            is_search_page = '/maps/search/' in url or ('/maps/place/' in url and not has_coordinates)
             store_found = False
+
+            self._debug(f"URL判定: has_coordinates={has_coordinates}, is_search_page={is_search_page}")
 
             if is_search_page:
                 self._update_progress("検索結果から店舗を選択中...", 18)
