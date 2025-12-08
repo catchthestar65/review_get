@@ -54,9 +54,13 @@
                             class="w-32 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
                         <span class="text-gray-500 ml-2">件</span>
                     </div>
-                    <button type="submit"
-                        class="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-3 px-4 rounded-lg transition">
-                        口コミを取得
+                    <button type="submit" id="btn-url"
+                        class="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-3 px-4 rounded-lg transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center">
+                        <svg id="btn-url-spinner" class="animate-spin h-5 w-5 mr-2 hidden" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                        </svg>
+                        <span id="btn-url-text">口コミを取得</span>
                     </button>
                 </form>
             </div>
@@ -78,9 +82,13 @@
                             class="w-32 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
                         <span class="text-gray-500 ml-2">件</span>
                     </div>
-                    <button type="submit"
-                        class="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-3 px-4 rounded-lg transition">
-                        口コミを取得
+                    <button type="submit" id="btn-search"
+                        class="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-3 px-4 rounded-lg transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center">
+                        <svg id="btn-search-spinner" class="animate-spin h-5 w-5 mr-2 hidden" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                        </svg>
+                        <span id="btn-search-text">口コミを取得</span>
                     </button>
                 </form>
             </div>
@@ -131,9 +139,13 @@
                             class="w-32 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
                         <span class="text-gray-500 ml-2">件</span>
                     </div>
-                    <button type="submit"
-                        class="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-3 px-4 rounded-lg transition">
-                        一括取得開始
+                    <button type="submit" id="btn-csv"
+                        class="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-3 px-4 rounded-lg transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center">
+                        <svg id="btn-csv-spinner" class="animate-spin h-5 w-5 mr-2 hidden" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                        </svg>
+                        <span id="btn-csv-text">一括取得開始</span>
                     </button>
                 </form>
             </div>
@@ -239,10 +251,47 @@
         let pollInterval = null;
         let startTime = null;
         let timerInterval = null;
+        let isProcessing = false;  // 処理中フラグ
+        let currentButtonId = null;  // 現在処理中のボタンID
+
+        // ボタンの状態を管理
+        function setButtonLoading(buttonId, loading) {
+            const btn = document.getElementById(buttonId);
+            const spinner = document.getElementById(buttonId + '-spinner');
+            const text = document.getElementById(buttonId + '-text');
+
+            if (loading) {
+                btn.disabled = true;
+                btn.classList.add('bg-yellow-600');
+                btn.classList.remove('bg-blue-600', 'hover:bg-blue-700');
+                spinner.classList.remove('hidden');
+                text.textContent = '処理中...';
+            } else {
+                btn.disabled = false;
+                btn.classList.remove('bg-yellow-600');
+                btn.classList.add('bg-blue-600', 'hover:bg-blue-700');
+                spinner.classList.add('hidden');
+                // テキストを元に戻す
+                if (buttonId === 'btn-csv') {
+                    text.textContent = '一括取得開始';
+                } else {
+                    text.textContent = '口コミを取得';
+                }
+            }
+        }
+
+        // すべてのボタンを無効化/有効化
+        function setAllButtonsDisabled(disabled) {
+            ['btn-url', 'btn-search', 'btn-csv'].forEach(id => {
+                const btn = document.getElementById(id);
+                if (btn) btn.disabled = disabled;
+            });
+        }
 
         // タブ切り替え
         document.querySelectorAll('.tab-btn').forEach(btn => {
             btn.addEventListener('click', () => {
+                if (isProcessing) return;  // 処理中はタブ切り替え禁止
                 document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
                 document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
                 btn.classList.add('active');
@@ -254,22 +303,27 @@
         // URL入力フォーム
         document.getElementById('form-url').addEventListener('submit', async (e) => {
             e.preventDefault();
+            if (isProcessing) return;
             const url = document.getElementById('input-url').value;
             const count = parseInt(document.getElementById('count-url').value);
+            currentButtonId = 'btn-url';
             await startScraping('/api/scrape/url', { url, count });
         });
 
         // 検索フォーム
         document.getElementById('form-search').addEventListener('submit', async (e) => {
             e.preventDefault();
+            if (isProcessing) return;
             const query = document.getElementById('input-search').value;
             const count = parseInt(document.getElementById('count-search').value);
+            currentButtonId = 'btn-search';
             await startScraping('/api/scrape/search', { query, count });
         });
 
         // CSV一括フォーム
         document.getElementById('form-csv').addEventListener('submit', async (e) => {
             e.preventDefault();
+            if (isProcessing) return;
             const fileInput = document.getElementById('input-csv');
             const count = parseInt(document.getElementById('count-csv').value);
 
@@ -279,6 +333,7 @@
             formData.append('file', fileInput.files[0]);
             formData.append('count', count);
 
+            currentButtonId = 'btn-csv';
             await startScrapingFormData('/api/scrape/csv', formData);
         });
 
@@ -312,10 +367,14 @@
 
         // スクレイピング開始（JSON）
         async function startScraping(endpoint, data) {
+            isProcessing = true;
+            setButtonLoading(currentButtonId, true);
+            setAllButtonsDisabled(true);
             showProgress();
             hideResults();
 
             try {
+                console.log('[API] リクエスト送信:', endpoint, data);
                 const response = await fetch(endpoint, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -323,32 +382,51 @@
                 });
 
                 const result = await response.json();
+                console.log('[API] レスポンス:', result);
                 currentTaskId = result.task_id;
                 startPolling();
 
             } catch (error) {
+                console.error('[API] エラー:', error);
+                finishProcessing();
                 showError('リクエストの送信に失敗しました: ' + error.message);
             }
         }
 
         // スクレイピング開始（FormData）
         async function startScrapingFormData(endpoint, formData) {
+            isProcessing = true;
+            setButtonLoading(currentButtonId, true);
+            setAllButtonsDisabled(true);
             showProgress();
             hideResults();
 
             try {
+                console.log('[API] CSVリクエスト送信:', endpoint);
                 const response = await fetch(endpoint, {
                     method: 'POST',
                     body: formData
                 });
 
                 const result = await response.json();
+                console.log('[API] レスポンス:', result);
                 currentTaskId = result.task_id;
                 startPolling();
 
             } catch (error) {
+                console.error('[API] エラー:', error);
+                finishProcessing();
                 showError('リクエストの送信に失敗しました: ' + error.message);
             }
+        }
+
+        // 処理完了時のクリーンアップ
+        function finishProcessing() {
+            isProcessing = false;
+            if (currentButtonId) {
+                setButtonLoading(currentButtonId, false);
+            }
+            setAllButtonsDisabled(false);
         }
 
         // ポーリング開始
@@ -360,18 +438,25 @@
                     const response = await fetch('/api/status/' + currentTaskId);
                     const status = await response.json();
 
+                    console.log('[POLL] ステータス:', status.status, status.message, status.progress + '%');
                     updateProgress(status.message, status.progress);
 
                     if (status.status === 'completed') {
                         clearInterval(pollInterval);
+                        console.log('[POLL] 完了! データ件数:', status.data ? status.data.length : 0);
+                        finishProcessing();
                         showResult(status);
                     } else if (status.status === 'error') {
                         clearInterval(pollInterval);
+                        console.error('[POLL] エラー:', status.message);
+                        finishProcessing();
                         showError(status.message);
                     }
 
                 } catch (error) {
                     clearInterval(pollInterval);
+                    console.error('[POLL] 通信エラー:', error);
+                    finishProcessing();
                     showError('ステータスの取得に失敗しました');
                 }
             }, 2000);
