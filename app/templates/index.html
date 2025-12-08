@@ -141,12 +141,53 @@
             <!-- 進捗表示エリア -->
             <div id="progress-area" class="mt-6 hidden">
                 <div class="border-t pt-4">
-                    <div class="flex justify-between text-sm text-gray-600 mb-2">
-                        <span id="progress-message">処理中...</span>
-                        <span id="progress-percent">0%</span>
+                    <!-- ステータスカード -->
+                    <div class="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
+                        <div class="flex items-center mb-3">
+                            <!-- スピナー -->
+                            <svg id="spinner" class="animate-spin h-5 w-5 text-blue-600 mr-3" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                            </svg>
+                            <span class="text-blue-800 font-medium">処理中</span>
+                        </div>
+
+                        <!-- 現在のステータス -->
+                        <p id="progress-message" class="text-blue-700 text-sm mb-3">準備中...</p>
+
+                        <!-- プログレスバー -->
+                        <div class="w-full bg-blue-200 rounded-full h-4 mb-2">
+                            <div id="progress-bar" class="bg-blue-600 h-4 rounded-full transition-all duration-500 flex items-center justify-center" style="width: 0%">
+                                <span id="progress-percent-inner" class="text-xs text-white font-medium"></span>
+                            </div>
+                        </div>
+
+                        <!-- 時間情報 -->
+                        <div class="flex justify-between text-xs text-blue-600 mt-2">
+                            <span>経過時間: <span id="elapsed-time">0:00</span></span>
+                            <span id="progress-percent" class="font-medium">0%</span>
+                            <span>推定残り: <span id="remaining-time">計算中...</span></span>
+                        </div>
                     </div>
-                    <div class="w-full bg-gray-200 rounded-full h-3">
-                        <div id="progress-bar" class="bg-blue-600 h-3 rounded-full transition-all duration-300" style="width: 0%"></div>
+
+                    <!-- 処理ステップ -->
+                    <div class="text-xs text-gray-500 space-y-1">
+                        <div id="step-1" class="flex items-center">
+                            <span class="w-4 h-4 rounded-full bg-gray-300 mr-2 flex items-center justify-center text-white text-xs">1</span>
+                            <span>ページにアクセス</span>
+                        </div>
+                        <div id="step-2" class="flex items-center">
+                            <span class="w-4 h-4 rounded-full bg-gray-300 mr-2 flex items-center justify-center text-white text-xs">2</span>
+                            <span>店舗情報を取得</span>
+                        </div>
+                        <div id="step-3" class="flex items-center">
+                            <span class="w-4 h-4 rounded-full bg-gray-300 mr-2 flex items-center justify-center text-white text-xs">3</span>
+                            <span>口コミを読み込み</span>
+                        </div>
+                        <div id="step-4" class="flex items-center">
+                            <span class="w-4 h-4 rounded-full bg-gray-300 mr-2 flex items-center justify-center text-white text-xs">4</span>
+                            <span>データを抽出</span>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -195,6 +236,8 @@
     <script>
         let currentTaskId = null;
         let pollInterval = null;
+        let startTime = null;
+        let timerInterval = null;
 
         // タブ切り替え
         document.querySelectorAll('.tab-btn').forEach(btn => {
@@ -317,16 +360,94 @@
             document.getElementById('progress-area').classList.remove('hidden');
             document.getElementById('result-area').classList.add('hidden');
             document.getElementById('error-area').classList.add('hidden');
+
+            // タイマー開始
+            startTime = Date.now();
+            if (timerInterval) clearInterval(timerInterval);
+            timerInterval = setInterval(updateTimer, 1000);
+
+            // ステップをリセット
+            for (let i = 1; i <= 4; i++) {
+                const step = document.getElementById('step-' + i);
+                step.querySelector('span').classList.remove('bg-blue-600', 'bg-green-500');
+                step.querySelector('span').classList.add('bg-gray-300');
+            }
+        }
+
+        function updateTimer() {
+            if (!startTime) return;
+            const elapsed = Math.floor((Date.now() - startTime) / 1000);
+            const minutes = Math.floor(elapsed / 60);
+            const seconds = elapsed % 60;
+            document.getElementById('elapsed-time').textContent =
+                `${minutes}:${seconds.toString().padStart(2, '0')}`;
         }
 
         function updateProgress(message, percent) {
             document.getElementById('progress-message').textContent = message;
             document.getElementById('progress-percent').textContent = percent + '%';
             document.getElementById('progress-bar').style.width = percent + '%';
+
+            // プログレスバー内のパーセント表示
+            const innerPercent = document.getElementById('progress-percent-inner');
+            if (percent >= 15) {
+                innerPercent.textContent = percent + '%';
+            } else {
+                innerPercent.textContent = '';
+            }
+
+            // 推定残り時間を計算
+            if (startTime && percent > 0) {
+                const elapsed = (Date.now() - startTime) / 1000;
+                const totalEstimate = (elapsed / percent) * 100;
+                const remaining = Math.max(0, Math.ceil(totalEstimate - elapsed));
+                const remMin = Math.floor(remaining / 60);
+                const remSec = remaining % 60;
+                document.getElementById('remaining-time').textContent =
+                    remaining > 0 ? `約${remMin}:${remSec.toString().padStart(2, '0')}` : '間もなく完了';
+            }
+
+            // ステップ更新
+            updateSteps(percent, message);
+        }
+
+        function updateSteps(percent, message) {
+            // ステップ1: ページにアクセス (0-20%)
+            if (percent >= 5) {
+                setStepActive(1, percent >= 20);
+            }
+            // ステップ2: 店舗情報を取得 (20-30%)
+            if (percent >= 20) {
+                setStepActive(2, percent >= 30);
+            }
+            // ステップ3: 口コミを読み込み (30-75%)
+            if (percent >= 30) {
+                setStepActive(3, percent >= 75);
+            }
+            // ステップ4: データを抽出 (75-100%)
+            if (percent >= 75) {
+                setStepActive(4, percent >= 100);
+            }
+        }
+
+        function setStepActive(stepNum, completed) {
+            const step = document.getElementById('step-' + stepNum);
+            const circle = step.querySelector('span');
+            circle.classList.remove('bg-gray-300');
+            if (completed) {
+                circle.classList.remove('bg-blue-600');
+                circle.classList.add('bg-green-500');
+            } else {
+                circle.classList.add('bg-blue-600');
+            }
         }
 
         // 結果表示
         function showResult(status) {
+            // タイマー停止
+            if (timerInterval) clearInterval(timerInterval);
+            startTime = null;
+
             document.getElementById('progress-area').classList.add('hidden');
             document.getElementById('result-area').classList.remove('hidden');
             document.getElementById('result-message').textContent = status.message;
@@ -345,6 +466,10 @@
 
         // エラー表示
         function showError(message) {
+            // タイマー停止
+            if (timerInterval) clearInterval(timerInterval);
+            startTime = null;
+
             document.getElementById('progress-area').classList.add('hidden');
             document.getElementById('error-area').classList.remove('hidden');
             document.getElementById('error-message').textContent = message;
@@ -352,6 +477,10 @@
 
         // 結果を隠す
         function hideResults() {
+            // タイマー停止
+            if (timerInterval) clearInterval(timerInterval);
+            startTime = null;
+
             document.getElementById('progress-area').classList.add('hidden');
             document.getElementById('result-area').classList.add('hidden');
             document.getElementById('error-area').classList.add('hidden');
