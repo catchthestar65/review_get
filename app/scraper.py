@@ -167,25 +167,40 @@ class GoogleMapsReviewScraper:
                     "arguments[0].scrollTo(0, arguments[0].scrollHeight);",
                     scrollable_div
                 )
-                time.sleep(1.5)
+                time.sleep(2.0)  # Render環境用に延長
 
                 # 追加のスクロール（元のコードと完全一致: 800px）
                 for _ in range(5):
                     driver.execute_script("arguments[0].scrollBy(0, 800);", scrollable_div)
-                    time.sleep(0.3)
+                    time.sleep(0.5)  # Render環境用に延長
 
-                time.sleep(2)
+                time.sleep(3.0)  # Render環境用に延長
 
                 # 新しい口コミ数を確認
                 new_reviews = driver.find_elements(By.CSS_SELECTOR, review_selectors)
 
-                # 変化がない場合のカウント（元のコードと完全一致: レビュー数のみチェック）
+                # 変化がない場合のカウント
                 if len(new_reviews) == reviews_loaded:
                     no_change_count += 1
-                    if no_change_count >= 20:
-                        self._update_progress(f"これ以上読み込めません（最終: {len(new_reviews)}件）", 70)
-                        self._debug("scroll_finished", f"final_count={reviews_loaded}, attempts={scroll_attempts}")
-                        break
+                    if no_change_count >= 15:  # 早めに確認開始
+                        # 終了前に追加待機して再確認（Render環境は読み込みが遅い）
+                        self._update_progress(f"追加読み込み待機中... ({len(new_reviews)}件)", 68)
+                        time.sleep(5)  # 長めに待機
+
+                        # 追加スクロール
+                        for _ in range(3):
+                            driver.execute_script("arguments[0].scrollTo(0, arguments[0].scrollHeight);", scrollable_div)
+                            time.sleep(2)
+
+                        final_reviews = driver.find_elements(By.CSS_SELECTOR, review_selectors)
+                        if len(final_reviews) > reviews_loaded:
+                            # まだ増えているのでリセット
+                            no_change_count = 0
+                            self._debug("found_more_after_wait", f"new={len(final_reviews)}, old={reviews_loaded}")
+                        elif no_change_count >= 25:  # 本当の終了
+                            self._update_progress(f"これ以上読み込めません（最終: {len(final_reviews)}件）", 70)
+                            self._debug("scroll_finished", f"final_count={len(final_reviews)}, attempts={scroll_attempts}")
+                            break
                 else:
                     no_change_count = 0
 
