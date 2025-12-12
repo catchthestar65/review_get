@@ -9,13 +9,10 @@ import urllib.parse
 import os
 import logging
 from typing import List, Dict, Optional, Callable
-from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
-from selenium.webdriver.chrome.options import Options
-from selenium.webdriver.chrome.service import Service
-from selenium_stealth import stealth
+import undetected_chromedriver as uc
 
 # ロギング設定
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -136,8 +133,8 @@ class GoogleMapsReviewScraper:
         self._debug("URL_CONVERT_OUTPUT", cleaned_url[:80])
         return cleaned_url
 
-    def setup_driver(self) -> webdriver.Chrome:
-        """Chrome WebDriverのセットアップ（Render/Docker環境対応）"""
+    def setup_driver(self) -> uc.Chrome:
+        """undetected-chromedriverでセットアップ（Bot検出回避）"""
         self._update_progress("ChromeDriverをセットアップ中...", 5)
 
         # 環境情報をログ
@@ -149,76 +146,41 @@ class GoogleMapsReviewScraper:
             "is_render": bool(chrome_bin)
         })
 
-        chrome_options = Options()
+        # undetected_chromedriver のオプション設定
+        options = uc.ChromeOptions()
 
-        # ヘッドレスモード（旧形式を試す - 新形式は検出される可能性がある）
-        chrome_options.add_argument('--headless')
+        # ヘッドレスモード
+        options.add_argument('--headless=new')
 
         # 基本設定
-        chrome_options.add_argument('--no-sandbox')
-        chrome_options.add_argument('--disable-dev-shm-usage')
-        chrome_options.add_argument('--disable-gpu')
-        chrome_options.add_argument('--window-size=1920,1080')
-        chrome_options.add_argument('--lang=ja-JP')
-        chrome_options.add_argument('--disable-blink-features=AutomationControlled')
+        options.add_argument('--no-sandbox')
+        options.add_argument('--disable-dev-shm-usage')
+        options.add_argument('--disable-gpu')
+        options.add_argument('--window-size=1920,1080')
+        options.add_argument('--lang=ja-JP')
 
         # Render/Docker環境向け追加設定
-        chrome_options.add_argument('--disable-software-rasterizer')
-        chrome_options.add_argument('--disable-extensions')
-        chrome_options.add_argument('--disable-infobars')
-        chrome_options.add_argument('--remote-debugging-port=9222')
-        chrome_options.add_argument('--ignore-certificate-errors')
-        chrome_options.add_argument('--allow-running-insecure-content')
-        chrome_options.add_argument('--disable-setuid-sandbox')
-        chrome_options.add_argument('--disable-features=VizDisplayCompositor')
-
-        # ヘッドレス検出回避
-        chrome_options.add_argument('--disable-web-security')
-        chrome_options.add_argument('--allow-file-access-from-files')
-        chrome_options.add_argument('--enable-javascript')
-
-        # User-Agent（最新のChromeに合わせる）
-        chrome_options.add_argument('user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36')
-
-        # 画像読み込みを有効化（ページの完全なレンダリングのため）
-        prefs = {
-            'intl.accept_languages': 'ja,ja-JP',
-            # 'profile.default_content_setting_values': {'images': 2}  # 画像を有効化
-        }
-        chrome_options.add_experimental_option('prefs', prefs)
-        chrome_options.add_experimental_option('excludeSwitches', ['enable-logging', 'enable-automation'])
-        chrome_options.add_experimental_option('useAutomationExtension', False)
+        options.add_argument('--disable-software-rasterizer')
+        options.add_argument('--disable-extensions')
+        options.add_argument('--remote-debugging-pipe')
 
         # Docker環境での設定
         if chrome_bin:
-            chrome_options.binary_location = chrome_bin
+            options.binary_location = chrome_bin
             self._debug("CHROME_BINARY", chrome_bin)
 
-        if chromedriver_path:
-            service = Service(executable_path=chromedriver_path)
-            self._debug("CHROMEDRIVER", chromedriver_path)
-        else:
-            from webdriver_manager.chrome import ChromeDriverManager
-            service = Service(ChromeDriverManager().install())
-            self._debug("CHROMEDRIVER", "using webdriver_manager")
-
         try:
-            driver = webdriver.Chrome(service=service, options=chrome_options)
-            driver.set_page_load_timeout(60)  # タイムアウトを延長
-
-            # selenium-stealthでBot検出を回避
-            stealth(driver,
-                languages=["ja-JP", "ja", "en-US", "en"],
-                vendor="Google Inc.",
-                platform="Win32",
-                webgl_vendor="Intel Inc.",
-                renderer="Intel Iris OpenGL Engine",
-                fix_hairline=True,
+            # undetected_chromedriver を使用
+            driver = uc.Chrome(
+                options=options,
+                driver_executable_path=chromedriver_path if chromedriver_path else None,
+                headless=True,
+                use_subprocess=True,
             )
-            self._debug("STEALTH_APPLIED", "selenium-stealth enabled")
+            driver.set_page_load_timeout(60)
 
             self._update_progress("ChromeDriverの起動完了", 10)
-            self._debug("DRIVER_STARTED", "success")
+            self._debug("DRIVER_STARTED", "success with undetected-chromedriver")
             return driver
 
         except Exception as e:
