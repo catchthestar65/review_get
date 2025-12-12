@@ -47,25 +47,48 @@ class GoogleMapsReviewScraper:
     def _capture_page_state(self, driver, label: str):
         """ページの状態をキャプチャしてデバッグ情報に記録"""
         try:
+            page_source = driver.page_source if driver.page_source else ''
+            current_url = driver.current_url if driver.current_url else ''
+            title = driver.title if driver.title else ''
+
             state = {
                 'label': label,
-                'url': driver.current_url[:100] if driver.current_url else 'N/A',
-                'title': driver.title[:50] if driver.title else 'N/A',
-                'page_source_length': len(driver.page_source) if driver.page_source else 0,
+                'url': current_url[:100],
+                'title': title[:50],
+                'page_source_length': len(page_source),
             }
+
             # 主要な要素の存在確認
             checks = {
                 'h1_exists': len(driver.find_elements(By.TAG_NAME, 'h1')) > 0,
                 'reviews_tab_exists': len(driver.find_elements(By.CSS_SELECTOR, 'button[aria-label*="クチコミ"]')) > 0,
                 'review_elements': len(driver.find_elements(By.CSS_SELECTOR, 'div[data-review-id], div.jftiEf.fontBodyMedium')),
                 'scrollable_divs': len(driver.find_elements(By.CSS_SELECTOR, 'div.m6QErb')),
-                'consent_page': 'consent' in driver.current_url.lower() if driver.current_url else False,
+                'consent_page': 'consent' in current_url.lower(),
             }
             state.update(checks)
             self._debug(f"PAGE_STATE_{label}", state)
+
+            # ページソースの先頭部分をログ（空白ページ検出用）
+            if len(page_source) < 1000:
+                self._debug(f"PAGE_SOURCE_{label}", f"SHORT_PAGE: {page_source[:500]}")
+            elif 'クチコミ' not in page_source and 'review' not in page_source.lower():
+                # クチコミ関連の文字列がない場合は警告
+                body_text = ''
+                try:
+                    body = driver.find_element(By.TAG_NAME, 'body')
+                    body_text = body.text[:300] if body.text else ''
+                except:
+                    pass
+                self._debug(f"PAGE_CONTENT_{label}", {
+                    "has_review_text": False,
+                    "body_preview": body_text[:200]
+                })
+
             return state
         except Exception as e:
             self._debug(f"PAGE_STATE_ERROR_{label}", str(e))
+            logger.exception(f"_capture_page_state error: {label}")
 
     def convert_to_cid_url(self, url: str) -> str:
         """
@@ -113,50 +136,82 @@ class GoogleMapsReviewScraper:
         return cleaned_url
 
     def setup_driver(self) -> webdriver.Chrome:
-        """Chrome WebDriverのセットアップ（元のeminal_mac_完全版と同じ設定）"""
+        """Chrome WebDriverのセットアップ（Render/Docker環境対応）"""
         self._update_progress("ChromeDriverをセットアップ中...", 5)
+
+        # 環境情報をログ
+        chrome_bin = os.environ.get('CHROME_BIN')
+        chromedriver_path = os.environ.get('CHROMEDRIVER_PATH')
+        self._debug("ENV_INFO", {
+            "CHROME_BIN": chrome_bin,
+            "CHROMEDRIVER_PATH": chromedriver_path,
+            "is_render": bool(chrome_bin)
+        })
 
         chrome_options = Options()
 
         # ヘッドレスモード
         chrome_options.add_argument('--headless=new')
 
-        # 基本設定（元のeminal_mac_完全版と同じ）
+        # 基本設定
         chrome_options.add_argument('--no-sandbox')
         chrome_options.add_argument('--disable-dev-shm-usage')
         chrome_options.add_argument('--disable-gpu')
         chrome_options.add_argument('--window-size=1920,1080')
         chrome_options.add_argument('--lang=ja-JP')
         chrome_options.add_argument('--disable-blink-features=AutomationControlled')
-        chrome_options.add_argument('user-agent=Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36')
 
-        # 画像読み込み無効化で高速化（元のeminal_mac_完全版と同じ）
+        # Render/Docker環境向け追加設定
+        chrome_options.add_argument('--disable-software-rasterizer')
+        chrome_options.add_argument('--disable-extensions')
+        chrome_options.add_argument('--disable-infobars')
+        chrome_options.add_argument('--remote-debugging-port=9222')
+        chrome_options.add_argument('--single-process')  # メモリ削減
+        chrome_options.add_argument('--ignore-certificate-errors')
+        chrome_options.add_argument('--allow-running-insecure-content')
+
+        # User-Agent（より汎用的に）
+        chrome_options.add_argument('user-agent=Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36')
+
+        # 画像読み込みを有効化（ページの完全なレンダリングのため）
         prefs = {
             'intl.accept_languages': 'ja,ja-JP',
-            'profile.default_content_setting_values': {'images': 2}
+            # 'profile.default_content_setting_values': {'images': 2}  # 画像を有効化
         }
         chrome_options.add_experimental_option('prefs', prefs)
         chrome_options.add_experimental_option('excludeSwitches', ['enable-logging', 'enable-automation'])
         chrome_options.add_experimental_option('useAutomationExtension', False)
 
         # Docker環境での設定
-        chrome_bin = os.environ.get('CHROME_BIN')
-        chromedriver_path = os.environ.get('CHROMEDRIVER_PATH')
-
         if chrome_bin:
             chrome_options.binary_location = chrome_bin
+            self._debug("CHROME_BINARY", chrome_bin)
 
         if chromedriver_path:
             service = Service(executable_path=chromedriver_path)
+            self._debug("CHROMEDRIVER", chromedriver_path)
         else:
             from webdriver_manager.chrome import ChromeDriverManager
             service = Service(ChromeDriverManager().install())
+            self._debug("CHROMEDRIVER", "using webdriver_manager")
 
-        driver = webdriver.Chrome(service=service, options=chrome_options)
-        driver.set_page_load_timeout(30)
+        try:
+            driver = webdriver.Chrome(service=service, options=chrome_options)
+            driver.set_page_load_timeout(60)  # タイムアウトを延長
 
-        self._update_progress("ChromeDriverの起動完了", 10)
-        return driver
+            # WebDriver検出回避
+            driver.execute_cdp_cmd('Page.addScriptToEvaluateOnNewDocument', {
+                'source': 'Object.defineProperty(navigator, "webdriver", { get: () => undefined });'
+            })
+
+            self._update_progress("ChromeDriverの起動完了", 10)
+            self._debug("DRIVER_STARTED", "success")
+            return driver
+
+        except Exception as e:
+            self._debug("DRIVER_ERROR", str(e))
+            logger.exception("ChromeDriver起動エラー")
+            raise
 
     def scroll_reviews(self, driver, target_count: int) -> int:
         """口コミをスクロールして読み込む"""
