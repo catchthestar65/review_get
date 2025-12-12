@@ -98,11 +98,15 @@ def run_scrape_url(task_id: str, url: str, count: int):
         tasks[task_id]["message"] = f"完了: {len(reviews)}件の口コミを取得しました"
         tasks[task_id]["data"] = reviews
         tasks[task_id]["place_info"] = scraper.place_info
+        # デバッグ情報を追加（問題診断用）
+        tasks[task_id]["debug_info"] = scraper.debug_info
 
     except Exception as e:
+        import traceback
         tasks[task_id]["status"] = "error"
         tasks[task_id]["message"] = f"エラー: {str(e)}"
         tasks[task_id]["error"] = str(e)
+        tasks[task_id]["traceback"] = traceback.format_exc()
 
 
 # 検索クエリでスクレイピング
@@ -139,11 +143,15 @@ def run_scrape_search(task_id: str, query: str, count: int):
         tasks[task_id]["message"] = f"完了: {len(reviews)}件の口コミを取得しました"
         tasks[task_id]["data"] = reviews
         tasks[task_id]["place_info"] = scraper.place_info
+        # デバッグ情報を追加（問題診断用）
+        tasks[task_id]["debug_info"] = scraper.debug_info
 
     except Exception as e:
+        import traceback
         tasks[task_id]["status"] = "error"
         tasks[task_id]["message"] = f"エラー: {str(e)}"
         tasks[task_id]["error"] = str(e)
+        tasks[task_id]["traceback"] = traceback.format_exc()
 
 
 # CSV一括処理

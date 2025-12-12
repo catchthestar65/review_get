@@ -166,9 +166,11 @@ class GoogleMapsReviewScraper:
         chrome_options.add_argument('--disable-extensions')
         chrome_options.add_argument('--disable-infobars')
         chrome_options.add_argument('--remote-debugging-port=9222')
-        chrome_options.add_argument('--single-process')  # メモリ削減
+        # --single-processは削除（Seleniumとの互換性問題を回避）
         chrome_options.add_argument('--ignore-certificate-errors')
         chrome_options.add_argument('--allow-running-insecure-content')
+        chrome_options.add_argument('--disable-setuid-sandbox')
+        chrome_options.add_argument('--disable-features=VizDisplayCompositor')
 
         # User-Agent（より汎用的に）
         chrome_options.add_argument('user-agent=Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36')
@@ -574,8 +576,8 @@ class GoogleMapsReviewScraper:
             self._update_progress(f"ページにアクセス中...", 15)
             self._debug("PAGE_LOAD_START", url[:80])
             driver.get(url)
-            time.sleep(10)
-            self._debug("PAGE_LOAD_COMPLETE", "waited 10s")
+            time.sleep(12)  # Render環境では長めに待機
+            self._debug("PAGE_LOAD_COMPLETE", "waited 12s")
 
             # デバッグ: ページタイトルとURLを記録
             page_title = driver.title if driver.title else "タイトルなし"
@@ -642,10 +644,18 @@ class GoogleMapsReviewScraper:
             # 同意後、再度ページタイトル確認
             self._debug("CONSENT_RESULT", {"clicked": consent_clicked})
             if consent_clicked:
-                time.sleep(2)
+                time.sleep(3)
                 page_title = driver.title if driver.title else "タイトルなし"
+                current_url_after = driver.current_url
                 self._capture_page_state(driver, "AFTER_CONSENT")
                 self._update_progress(f"同意後タイトル: {page_title[:25]}", 18)
+
+                # consent処理後、まだconsentページにいる場合は元のURLに再度アクセス
+                if 'consent' in current_url_after.lower():
+                    self._debug("CONSENT_REDIRECT_NEEDED", "still on consent page, retrying URL")
+                    driver.get(url)
+                    time.sleep(10)
+                    self._capture_page_state(driver, "AFTER_CONSENT_RETRY")
 
             # 検索結果ページ判定
             # CID形式 (?cid=) は直接店舗ページなので検索不要
