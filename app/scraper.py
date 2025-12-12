@@ -39,8 +39,33 @@ class GoogleMapsReviewScraper:
 
     def _debug(self, key: str, value):
         """デバッグ情報を記録"""
+        import datetime
+        timestamp = datetime.datetime.now().strftime("%H:%M:%S.%f")[:-3]
         self.debug_info[key] = value
-        logger.info(f"[DEBUG] {key}: {value}")
+        logger.info(f"[DEBUG {timestamp}] {key}: {value}")
+
+    def _capture_page_state(self, driver, label: str):
+        """ページの状態をキャプチャしてデバッグ情報に記録"""
+        try:
+            state = {
+                'label': label,
+                'url': driver.current_url[:100] if driver.current_url else 'N/A',
+                'title': driver.title[:50] if driver.title else 'N/A',
+                'page_source_length': len(driver.page_source) if driver.page_source else 0,
+            }
+            # 主要な要素の存在確認
+            checks = {
+                'h1_exists': len(driver.find_elements(By.TAG_NAME, 'h1')) > 0,
+                'reviews_tab_exists': len(driver.find_elements(By.CSS_SELECTOR, 'button[aria-label*="クチコミ"]')) > 0,
+                'review_elements': len(driver.find_elements(By.CSS_SELECTOR, 'div[data-review-id], div.jftiEf.fontBodyMedium')),
+                'scrollable_divs': len(driver.find_elements(By.CSS_SELECTOR, 'div.m6QErb')),
+                'consent_page': 'consent' in driver.current_url.lower() if driver.current_url else False,
+            }
+            state.update(checks)
+            self._debug(f"PAGE_STATE_{label}", state)
+            return state
+        except Exception as e:
+            self._debug(f"PAGE_STATE_ERROR_{label}", str(e))
 
     def setup_driver(self) -> webdriver.Chrome:
         """Chrome WebDriverのセットアップ（元のeminal_mac_完全版と同じ設定）"""
@@ -131,9 +156,16 @@ class GoogleMapsReviewScraper:
             if not scrollable_div:
                 self._update_progress("スクロール領域が見つかりません", 31)
                 self._debug("scroll_area_not_found", "true")
-                # ページ全体のスクリーンショット的な情報を取得
+                self._capture_page_state(driver, "SCROLL_AREA_NOT_FOUND")
+                # 追加のデバッグ情報
                 page_source_len = len(driver.page_source)
                 self._debug("page_source_length", page_source_len)
+                # HTMLの一部を記録（デバッグ用）
+                try:
+                    body_text = driver.find_element(By.TAG_NAME, 'body').text[:500]
+                    self._debug("body_text_sample", body_text.replace('\n', ' ')[:200])
+                except:
+                    pass
                 return 0
 
             self._update_progress(f"スクロール領域発見: {found_selector[:25]}", 31)
@@ -412,35 +444,47 @@ class GoogleMapsReviewScraper:
 
     def scrape_reviews(self, url: str, target_count: int = 100) -> List[Dict]:
         """メイン処理：口コミを取得"""
+        self._debug("SCRAPE_START", {"url": url[:100], "target_count": target_count})
         driver = self.setup_driver()
 
         try:
             # 日本語設定
+            original_url = url
             if 'hl=' not in url:
                 separator = '&' if '?' in url else '?'
                 url = f"{url}{separator}hl=ja"
+            self._debug("URL_MODIFIED", {"original": original_url[:80], "modified": url[:80]})
 
             # /maps/place/店舗名 形式を /maps/search/店舗名 形式に変換
             # （座標がないplace URLは検索として処理する方が確実）
+            url_converted = False
             if '/maps/place/' in url and '@' not in url and 'data=' not in url:
                 # URLから店舗名を抽出
                 place_match = re.search(r'/maps/place/([^/?]+)', url)
                 if place_match:
                     place_query = urllib.parse.unquote(place_match.group(1).replace('+', ' '))
                     url = f"https://www.google.com/maps/search/{urllib.parse.quote(place_query)}"
+                    url_converted = True
                     self._update_progress(f"検索URLに変換: {place_query[:20]}", 14)
+            self._debug("URL_CONVERSION", {"converted": url_converted, "final_url": url[:80]})
 
             self._update_progress(f"ページにアクセス中...", 15)
+            self._debug("PAGE_LOAD_START", url[:80])
             driver.get(url)
             time.sleep(10)
+            self._debug("PAGE_LOAD_COMPLETE", "waited 10s")
 
             # デバッグ: ページタイトルとURLを記録
             page_title = driver.title if driver.title else "タイトルなし"
             current_url = driver.current_url
+            self._debug("PAGE_INFO", {"title": page_title[:50], "current_url": current_url[:100]})
+            self._capture_page_state(driver, "AFTER_LOAD")
             self._update_progress(f"タイトル: {page_title[:30]}", 16)
 
             # デバッグ: consent/同意ページかチェック
-            if 'consent' in current_url.lower() or 'consent' in page_title.lower():
+            is_consent_page = 'consent' in current_url.lower() or 'consent' in page_title.lower()
+            self._debug("CONSENT_CHECK", {"is_consent": is_consent_page, "url_has_consent": 'consent' in current_url.lower()})
+            if is_consent_page:
                 self._update_progress("同意ページ検出、処理中...", 17)
 
             # Cookieバナー/同意ページを閉じる（複数のパターン対応）
@@ -493,9 +537,11 @@ class GoogleMapsReviewScraper:
                 pass
 
             # 同意後、再度ページタイトル確認
+            self._debug("CONSENT_RESULT", {"clicked": consent_clicked})
             if consent_clicked:
                 time.sleep(2)
                 page_title = driver.title if driver.title else "タイトルなし"
+                self._capture_page_state(driver, "AFTER_CONSENT")
                 self._update_progress(f"同意後タイトル: {page_title[:25]}", 18)
 
             # 検索結果ページ判定（座標付きURLは直接店舗ページなので除外）
@@ -504,7 +550,13 @@ class GoogleMapsReviewScraper:
             is_search_page = '/maps/search/' in url or ('/maps/place/' in url and not has_coordinates)
             store_found = False
 
-            self._debug("URL判定", f"has_coordinates={has_coordinates}, is_search_page={is_search_page}")
+            self._debug("URL_TYPE_CHECK", {
+                "url_sample": url[:60],
+                "has_at_sign": '/@' in url,
+                "has_z_slash": 'z/' in url,
+                "has_coordinates": has_coordinates,
+                "is_search_page": is_search_page
+            })
 
             if is_search_page:
                 self._update_progress("検索結果から店舗を選択中...", 18)
@@ -549,8 +601,10 @@ class GoogleMapsReviewScraper:
                     self._update_progress("店舗の選択に失敗", 19)
 
             # 店舗情報取得
+            self._capture_page_state(driver, "BEFORE_PLACE_INFO")
             self._update_progress("店舗情報を取得中...", 20)
             self.get_place_info(driver)
+            self._debug("PLACE_INFO", self.place_info)
             self._update_progress(f"店舗: {self.place_info.get('name', '不明')[:20]}", 22)
 
             # 口コミタブをクリック（複数のセレクタ対応）
@@ -564,6 +618,17 @@ class GoogleMapsReviewScraper:
                 'div[role="tab"][aria-label*="クチコミ"]',
                 'button.hh2c6'
             ]
+
+            # 各セレクタの存在確認をログ
+            tab_debug = {}
+            for sel in tab_selectors:
+                try:
+                    found = driver.find_elements(By.CSS_SELECTOR, sel)
+                    tab_debug[sel[:30]] = len(found)
+                except:
+                    tab_debug[sel[:30]] = "error"
+            self._debug("TAB_SELECTORS_CHECK", tab_debug)
+
             for sel in tab_selectors:
                 try:
                     reviews_tab = WebDriverWait(driver, 5).until(
@@ -572,15 +637,21 @@ class GoogleMapsReviewScraper:
                     driver.execute_script("arguments[0].click();", reviews_tab)
                     time.sleep(5)
                     reviews_tab_found = True
+                    self._debug("REVIEWS_TAB_FOUND", {"selector": sel, "success": True})
                     self._update_progress("口コミタブを開きました", 28)
                     break
-                except:
+                except Exception as e:
+                    self._debug(f"TAB_SELECTOR_FAIL_{sel[:20]}", str(e)[:50])
                     continue
 
             if not reviews_tab_found:
+                self._debug("REVIEWS_TAB_NOT_FOUND", "all selectors failed")
                 self._update_progress("口コミタブが見つかりません、直接探索", 28)
 
+            self._capture_page_state(driver, "AFTER_TAB_CLICK")
+
             # 並び順を「最新」に変更
+            sort_changed = False
             try:
                 sort_button = WebDriverWait(driver, 8).until(
                     EC.element_to_be_clickable((By.CSS_SELECTOR, 'button[data-value="Sort"]'))
@@ -592,41 +663,65 @@ class GoogleMapsReviewScraper:
                     EC.element_to_be_clickable((By.XPATH, '//div[@role="menuitemradio"][contains(., "新しい順")]'))
                 )
                 driver.execute_script("arguments[0].click();", newest_option)
+                sort_changed = True
                 time.sleep(3)
-            except:
-                pass
+            except Exception as e:
+                self._debug("SORT_CHANGE_FAILED", str(e)[:50])
+            self._debug("SORT_CHANGED", sort_changed)
 
             # 現在のページの口コミ要素を事前確認
             initial_reviews = driver.find_elements(By.CSS_SELECTOR,
                 'div[data-review-id], div.jftiEf.fontBodyMedium')
+            self._debug("INITIAL_REVIEWS", {
+                "count": len(initial_reviews),
+                "data_review_id": len(driver.find_elements(By.CSS_SELECTOR, 'div[data-review-id]')),
+                "jftiEf": len(driver.find_elements(By.CSS_SELECTOR, 'div.jftiEf.fontBodyMedium'))
+            })
             self._update_progress(f"初期口コミ数: {len(initial_reviews)}件", 29)
 
             # 口コミをスクロールして読み込み
+            self._debug("SCROLL_START", {"target": target_count})
             loaded_count = self.scroll_reviews(driver, target_count)
+            self._debug("SCROLL_RESULT", {"loaded": loaded_count})
             self._update_progress(f"スクロール後: {loaded_count}件発見", 72)
 
             if loaded_count == 0:
                 # スクロールできなかった場合、現在表示されている口コミを取得
                 self._update_progress("スクロールなしで口コミを取得中...", 73)
+                self._capture_page_state(driver, "SCROLL_ZERO_FALLBACK")
                 self.found_review_elements = driver.find_elements(By.CSS_SELECTOR,
                     'div[data-review-id], div.jftiEf.fontBodyMedium')
                 loaded_count = len(self.found_review_elements)
+                self._debug("FALLBACK_REVIEW_COUNT", loaded_count)
                 if loaded_count == 0:
+                    self._debug("NO_REVIEWS_FOUND", "returning empty")
                     self._update_progress("口コミが見つかりませんでした", 100)
                     return []
 
             # 口コミを抽出
+            self._debug("EXTRACT_START", {"found_elements": len(self.found_review_elements)})
             self.reviews = self.extract_reviews(driver, target_count, url)
+            self._debug("EXTRACT_RESULT", {"extracted": len(self.reviews)})
 
             self._update_progress(f"完了: {len(self.reviews)}件取得", 100)
             return self.reviews
 
         except Exception as e:
+            import traceback
+            self._debug("SCRAPE_EXCEPTION", {
+                "error": str(e),
+                "type": type(e).__name__,
+                "traceback": traceback.format_exc()[-500:]
+            })
             self._update_progress(f"エラー: {str(e)[:30]}", 100)
+            logger.exception("scrape_reviews failed")
             return []
 
         finally:
-            driver.quit()
+            try:
+                driver.quit()
+            except:
+                pass
 
     def scrape_by_search(self, query: str, target_count: int = 100) -> List[Dict]:
         """検索クエリから口コミを取得"""
