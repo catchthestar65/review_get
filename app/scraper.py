@@ -748,7 +748,7 @@ class GoogleMapsReviewScraper:
                         EC.presence_of_element_located((By.CSS_SELECTOR, sel))
                     )
                     driver.execute_script("arguments[0].click();", reviews_tab)
-                    time.sleep(5)
+                    time.sleep(10)  # 待機時間を延長（口コミの動的読み込みを待つ）
                     reviews_tab_found = True
                     self._debug("REVIEWS_TAB_FOUND", {"selector": sel, "success": True})
                     self._update_progress("口コミタブを開きました", 28)
@@ -783,6 +783,25 @@ class GoogleMapsReviewScraper:
             self._debug("SORT_CHANGED", sort_changed)
 
             # 現在のページの口コミ要素を事前確認
+            # 複数のセレクタパターンを試す
+            review_selector_tests = {
+                "data-review-id": 'div[data-review-id]',
+                "jftiEf.fontBodyMedium": 'div.jftiEf.fontBodyMedium',
+                "jftiEf": 'div.jftiEf',
+                "jJc9Ad": 'div.jJc9Ad',
+                "GHT2ce": 'div.GHT2ce',
+                "bwb7ce": 'div.bwb7ce',
+                "review-container": '[data-js-log-root]',
+            }
+            review_counts = {}
+            for name, sel in review_selector_tests.items():
+                try:
+                    count = len(driver.find_elements(By.CSS_SELECTOR, sel))
+                    review_counts[name] = count
+                except:
+                    review_counts[name] = "error"
+            self._debug("REVIEW_SELECTORS_TEST", review_counts)
+
             initial_reviews = driver.find_elements(By.CSS_SELECTOR,
                 'div[data-review-id], div.jftiEf.fontBodyMedium')
             self._debug("INITIAL_REVIEWS", {
@@ -791,6 +810,14 @@ class GoogleMapsReviewScraper:
                 "jftiEf": len(driver.find_elements(By.CSS_SELECTOR, 'div.jftiEf.fontBodyMedium'))
             })
             self._update_progress(f"初期口コミ数: {len(initial_reviews)}件", 29)
+
+            # ページソースに含まれる口コミ関連のキーワードを確認
+            page_source = driver.page_source
+            review_keywords = ['data-review-id', 'jftiEf', 'wiI7pd', 'rsqaWe', 'クチコミ', 'review', '星']
+            keyword_check = {}
+            for kw in review_keywords:
+                keyword_check[kw] = page_source.count(kw)
+            self._debug("PAGE_SOURCE_KEYWORDS", keyword_check)
 
             # 口コミをスクロールして読み込み
             self._debug("SCROLL_START", {"target": target_count})
