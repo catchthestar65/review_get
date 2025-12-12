@@ -15,6 +15,7 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.chrome.service import Service
+from selenium_stealth import stealth
 
 # ロギング設定
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -205,42 +206,16 @@ class GoogleMapsReviewScraper:
             driver = webdriver.Chrome(service=service, options=chrome_options)
             driver.set_page_load_timeout(60)  # タイムアウトを延長
 
-            # WebDriver検出回避（複数の方法）
-            stealth_script = """
-                // webdriver プロパティを隠す
-                Object.defineProperty(navigator, 'webdriver', {
-                    get: () => undefined
-                });
-
-                // Chrome固有のプロパティを偽装
-                window.chrome = {
-                    runtime: {},
-                    loadTimes: function() {},
-                    csi: function() {},
-                    app: {}
-                };
-
-                // permissions APIを偽装
-                const originalQuery = window.navigator.permissions.query;
-                window.navigator.permissions.query = (parameters) => (
-                    parameters.name === 'notifications' ?
-                        Promise.resolve({ state: Notification.permission }) :
-                        originalQuery(parameters)
-                );
-
-                // plugins配列を追加
-                Object.defineProperty(navigator, 'plugins', {
-                    get: () => [1, 2, 3, 4, 5]
-                });
-
-                // languages配列を設定
-                Object.defineProperty(navigator, 'languages', {
-                    get: () => ['ja-JP', 'ja', 'en-US', 'en']
-                });
-            """
-            driver.execute_cdp_cmd('Page.addScriptToEvaluateOnNewDocument', {
-                'source': stealth_script
-            })
+            # selenium-stealthでBot検出を回避
+            stealth(driver,
+                languages=["ja-JP", "ja", "en-US", "en"],
+                vendor="Google Inc.",
+                platform="Win32",
+                webgl_vendor="Intel Inc.",
+                renderer="Intel Iris OpenGL Engine",
+                fix_hairline=True,
+            )
+            self._debug("STEALTH_APPLIED", "selenium-stealth enabled")
 
             self._update_progress("ChromeDriverの起動完了", 10)
             self._debug("DRIVER_STARTED", "success")
