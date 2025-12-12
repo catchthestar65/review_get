@@ -10,7 +10,14 @@ import os
 import logging
 from typing import List, Dict, Optional, Callable
 from playwright.sync_api import sync_playwright, Page, Browser
-from playwright_stealth import stealth_sync
+
+# playwright-stealthをオプショナルに
+try:
+    from playwright_stealth import stealth_sync
+    STEALTH_AVAILABLE = True
+except ImportError:
+    STEALTH_AVAILABLE = False
+    stealth_sync = None
 
 # ロギング設定
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -416,19 +423,67 @@ class GoogleMapsReviewScraper:
                 )
                 self._debug("BROWSER_LAUNCHED", "chromium headless")
 
-                # コンテキスト作成
+                # コンテキスト作成（より自然なブラウザに見せる）
                 context = browser.new_context(
                     viewport={'width': 1920, 'height': 1080},
                     locale='ja-JP',
                     timezone_id='Asia/Tokyo',
                     user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+                    extra_http_headers={
+                        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
+                        'Accept-Language': 'ja-JP,ja;q=0.9,en-US;q=0.8,en;q=0.7',
+                        'Accept-Encoding': 'gzip, deflate, br',
+                        'DNT': '1',
+                        'Connection': 'keep-alive',
+                        'Upgrade-Insecure-Requests': '1',
+                        'Sec-Fetch-Dest': 'document',
+                        'Sec-Fetch-Mode': 'navigate',
+                        'Sec-Fetch-Site': 'none',
+                        'Sec-Fetch-User': '?1',
+                        'Cache-Control': 'max-age=0',
+                    },
                 )
 
                 page = context.new_page()
 
-                # playwright-stealthを適用
-                stealth_sync(page)
-                self._debug("STEALTH_APPLIED", "playwright-stealth enabled")
+                # playwright-stealthを適用（利用可能な場合）
+                if STEALTH_AVAILABLE and stealth_sync:
+                    stealth_sync(page)
+                    self._debug("STEALTH_APPLIED", "playwright-stealth enabled")
+                else:
+                    self._debug("STEALTH_NOT_AVAILABLE", "running without stealth")
+
+                # 追加のBot検出回避（JavaScriptで上書き）
+                page.add_init_script("""
+                    // webdriver検出を回避
+                    Object.defineProperty(navigator, 'webdriver', {
+                        get: () => undefined
+                    });
+
+                    // plugins配列を追加
+                    Object.defineProperty(navigator, 'plugins', {
+                        get: () => [1, 2, 3, 4, 5]
+                    });
+
+                    // languages配列
+                    Object.defineProperty(navigator, 'languages', {
+                        get: () => ['ja-JP', 'ja', 'en-US', 'en']
+                    });
+
+                    // Chrome特有のプロパティ
+                    window.chrome = {
+                        runtime: {}
+                    };
+
+                    // Permissions API
+                    const originalQuery = window.navigator.permissions.query;
+                    window.navigator.permissions.query = (parameters) => (
+                        parameters.name === 'notifications' ?
+                            Promise.resolve({ state: Notification.permission }) :
+                            originalQuery(parameters)
+                    );
+                """)
+                self._debug("ANTI_DETECT_SCRIPTS", "injected")
 
                 self._update_progress("ブラウザ起動完了", 10)
 
