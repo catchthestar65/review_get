@@ -150,8 +150,8 @@ class GoogleMapsReviewScraper:
 
         chrome_options = Options()
 
-        # ヘッドレスモード
-        chrome_options.add_argument('--headless=new')
+        # ヘッドレスモード（旧形式を試す - 新形式は検出される可能性がある）
+        chrome_options.add_argument('--headless')
 
         # 基本設定
         chrome_options.add_argument('--no-sandbox')
@@ -166,14 +166,18 @@ class GoogleMapsReviewScraper:
         chrome_options.add_argument('--disable-extensions')
         chrome_options.add_argument('--disable-infobars')
         chrome_options.add_argument('--remote-debugging-port=9222')
-        # --single-processは削除（Seleniumとの互換性問題を回避）
         chrome_options.add_argument('--ignore-certificate-errors')
         chrome_options.add_argument('--allow-running-insecure-content')
         chrome_options.add_argument('--disable-setuid-sandbox')
         chrome_options.add_argument('--disable-features=VizDisplayCompositor')
 
-        # User-Agent（より汎用的に）
-        chrome_options.add_argument('user-agent=Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36')
+        # ヘッドレス検出回避
+        chrome_options.add_argument('--disable-web-security')
+        chrome_options.add_argument('--allow-file-access-from-files')
+        chrome_options.add_argument('--enable-javascript')
+
+        # User-Agent（最新のChromeに合わせる）
+        chrome_options.add_argument('user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36')
 
         # 画像読み込みを有効化（ページの完全なレンダリングのため）
         prefs = {
@@ -201,9 +205,41 @@ class GoogleMapsReviewScraper:
             driver = webdriver.Chrome(service=service, options=chrome_options)
             driver.set_page_load_timeout(60)  # タイムアウトを延長
 
-            # WebDriver検出回避
+            # WebDriver検出回避（複数の方法）
+            stealth_script = """
+                // webdriver プロパティを隠す
+                Object.defineProperty(navigator, 'webdriver', {
+                    get: () => undefined
+                });
+
+                // Chrome固有のプロパティを偽装
+                window.chrome = {
+                    runtime: {},
+                    loadTimes: function() {},
+                    csi: function() {},
+                    app: {}
+                };
+
+                // permissions APIを偽装
+                const originalQuery = window.navigator.permissions.query;
+                window.navigator.permissions.query = (parameters) => (
+                    parameters.name === 'notifications' ?
+                        Promise.resolve({ state: Notification.permission }) :
+                        originalQuery(parameters)
+                );
+
+                // plugins配列を追加
+                Object.defineProperty(navigator, 'plugins', {
+                    get: () => [1, 2, 3, 4, 5]
+                });
+
+                // languages配列を設定
+                Object.defineProperty(navigator, 'languages', {
+                    get: () => ['ja-JP', 'ja', 'en-US', 'en']
+                });
+            """
             driver.execute_cdp_cmd('Page.addScriptToEvaluateOnNewDocument', {
-                'source': 'Object.defineProperty(navigator, "webdriver", { get: () => undefined });'
+                'source': stealth_script
             })
 
             self._update_progress("ChromeDriverの起動完了", 10)
@@ -818,6 +854,37 @@ class GoogleMapsReviewScraper:
             for kw in review_keywords:
                 keyword_check[kw] = page_source.count(kw)
             self._debug("PAGE_SOURCE_KEYWORDS", keyword_check)
+
+            # HTMLの口コミ部分を特定するための詳細デバッグ
+            try:
+                # 口コミ関連の要素を探す（複数の新しいセレクタも試す）
+                potential_review_selectors = [
+                    ('div[aria-label*="クチコミ"]', 'aria-label クチコミ'),
+                    ('div[data-attrid*="review"]', 'data-attrid review'),
+                    ('[aria-label*="星"]', 'aria-label 星'),
+                    ('span[aria-label*="つ星"]', 'span aria-label 星'),
+                    ('.fontBodyMedium', 'fontBodyMedium'),
+                    ('.fontBodySmall', 'fontBodySmall'),
+                ]
+                new_selectors_found = {}
+                for sel, name in potential_review_selectors:
+                    try:
+                        count = len(driver.find_elements(By.CSS_SELECTOR, sel))
+                        new_selectors_found[name] = count
+                    except:
+                        new_selectors_found[name] = "error"
+                self._debug("NEW_SELECTORS_TEST", new_selectors_found)
+
+                # ページソースから口コミセクションのHTMLサンプルを取得
+                # "クチコミ"の前後のHTMLを抜き出す
+                if 'クチコミ' in page_source:
+                    idx = page_source.find('クチコミ')
+                    sample_start = max(0, idx - 200)
+                    sample_end = min(len(page_source), idx + 500)
+                    html_sample = page_source[sample_start:sample_end].replace('\n', ' ').replace('  ', ' ')
+                    self._debug("HTML_AROUND_KUCHIKOMI", html_sample[:400])
+            except Exception as e:
+                self._debug("DETAILED_DEBUG_ERROR", str(e)[:100])
 
             # 口コミをスクロールして読み込み
             self._debug("SCROLL_START", {"target": target_count})
