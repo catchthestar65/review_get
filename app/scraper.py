@@ -5,6 +5,7 @@ Playwrightを使用してBot検出を回避しながら口コミを取得
 
 import time
 import re
+import random
 import urllib.parse
 import os
 import logging
@@ -22,6 +23,14 @@ except ImportError:
 # ロギング設定
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
+
+# User-Agentリスト（ランダム選択用）
+USER_AGENTS = [
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36',
+    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.1 Safari/605.1.15',
+]
 
 
 class GoogleMapsReviewScraper:
@@ -46,6 +55,22 @@ class GoogleMapsReviewScraper:
         timestamp = datetime.datetime.now().strftime("%H:%M:%S.%f")[:-3]
         self.debug_info[key] = value
         logger.info(f"[DEBUG {timestamp}] {key}: {value}")
+
+    def _random_sleep(self, min_sec: float = 0.5, max_sec: float = 2.0):
+        """ランダムな待機"""
+        time.sleep(random.uniform(min_sec, max_sec))
+
+    def _human_like_mouse_move(self, page: Page):
+        """人間らしいマウス移動をシミュレート"""
+        try:
+            # ランダムな位置にマウスを移動
+            for _ in range(random.randint(2, 5)):
+                x = random.randint(100, 1800)
+                y = random.randint(100, 900)
+                page.mouse.move(x, y)
+                self._random_sleep(0.1, 0.3)
+        except Exception as e:
+            self._debug("MOUSE_MOVE_ERROR", str(e)[:50])
 
     def _capture_page_state(self, page: Page, label: str):
         """ページの状態をキャプチャしてデバッグ情報に記録"""
@@ -87,34 +112,19 @@ class GoogleMapsReviewScraper:
             self._debug(f"PAGE_STATE_ERROR_{label}", str(e))
             logger.exception(f"_capture_page_state error: {label}")
 
-    def convert_to_cid_url(self, url: str) -> str:
-        """URLをCID形式に変換"""
-        self._debug("URL_CONVERT_INPUT", url[:80])
+    def _clean_url(self, url: str) -> str:
+        """URLをクリーンアップ（CID変換はしない）"""
+        self._debug("URL_CLEAN_INPUT", url[:100])
 
-        cid_match = re.search(r'!1s(0x[0-9a-f]+:0x[0-9a-f]+)', url)
-        if cid_match:
-            cid_hex = cid_match.group(1)
-            self._debug("CID_HEX_FOUND", cid_hex)
+        # 不要なパラメータを削除
+        cleaned_url = re.sub(r'[?&](entry|g_ep|g_st)=[^&]*', '', url)
 
-            try:
-                hex_parts = cid_hex.split(':')
-                hex_part = hex_parts[1][2:]
-                cid_decimal = int(hex_part, 16)
-                cid_url = f"https://www.google.com/maps?cid={cid_decimal}&hl=ja"
-                self._debug("CID_URL_GENERATED", cid_url)
-                return cid_url
-            except Exception as e:
-                self._debug("CID_CONVERT_ERROR", str(e))
-
-        self._debug("CID_NOT_FOUND", "trying parameter cleanup")
-        cleaned_url = re.sub(r'[?&](entry|g_ep)=[^&]*', '', url)
-        if '?' not in cleaned_url:
-            cleaned_url = cleaned_url.replace('&', '?', 1)
+        # hlパラメータを追加/更新
         if 'hl=' not in cleaned_url:
             separator = '&' if '?' in cleaned_url else '?'
             cleaned_url = f"{cleaned_url}{separator}hl=ja"
 
-        self._debug("URL_CONVERT_OUTPUT", cleaned_url[:80])
+        self._debug("URL_CLEAN_OUTPUT", cleaned_url[:100])
         return cleaned_url
 
     def scroll_reviews(self, page: Page, target_count: int) -> int:
@@ -189,16 +199,16 @@ class GoogleMapsReviewScraper:
                     self._debug("target_reached", f"loaded={reviews_loaded}, target={target_count}")
                     break
 
-                # スクロール実行
+                # スクロール実行（ランダム化）
                 scrollable_div.evaluate("el => el.scrollTo(0, el.scrollHeight)")
-                time.sleep(1.5)
+                self._random_sleep(1.0, 2.0)
 
                 # 追加のスクロール
-                for _ in range(3):
-                    scrollable_div.evaluate("el => el.scrollBy(0, 500)")
-                    time.sleep(0.3)
+                for _ in range(random.randint(2, 4)):
+                    scrollable_div.evaluate(f"el => el.scrollBy(0, {random.randint(300, 700)})")
+                    self._random_sleep(0.2, 0.5)
 
-                time.sleep(2)
+                self._random_sleep(1.5, 3.0)
 
                 new_count = page.locator(review_selector).count()
 
@@ -206,9 +216,9 @@ class GoogleMapsReviewScraper:
                     no_change_count += 1
                     if no_change_count >= 10:
                         self._update_progress(f"追加読み込み待機中... ({new_count}件)", 68)
-                        time.sleep(3)
+                        self._random_sleep(2.0, 4.0)
                         scrollable_div.evaluate("el => el.scrollTo(0, el.scrollHeight)")
-                        time.sleep(2)
+                        self._random_sleep(1.5, 3.0)
 
                         final_count = page.locator(review_selector).count()
                         if final_count > reviews_loaded:
@@ -239,7 +249,7 @@ class GoogleMapsReviewScraper:
             for button in more_buttons:
                 if button.is_visible():
                     button.click()
-                    time.sleep(0.2)
+                    self._random_sleep(0.1, 0.3)
                     return
         except:
             pass
@@ -419,16 +429,23 @@ class GoogleMapsReviewScraper:
                         '--disable-gpu',
                         '--disable-blink-features=AutomationControlled',
                         '--lang=ja-JP',
+                        '--disable-infobars',
+                        '--disable-extensions',
+                        '--window-size=1920,1080',
                     ]
                 )
                 self._debug("BROWSER_LAUNCHED", "chromium headless")
+
+                # ランダムなUser-Agentを選択
+                user_agent = random.choice(USER_AGENTS)
+                self._debug("USER_AGENT", user_agent[:50])
 
                 # コンテキスト作成（より自然なブラウザに見せる）
                 context = browser.new_context(
                     viewport={'width': 1920, 'height': 1080},
                     locale='ja-JP',
                     timezone_id='Asia/Tokyo',
-                    user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+                    user_agent=user_agent,
                     extra_http_headers={
                         'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
                         'Accept-Language': 'ja-JP,ja;q=0.9,en-US;q=0.8,en;q=0.7',
@@ -441,6 +458,9 @@ class GoogleMapsReviewScraper:
                         'Sec-Fetch-Site': 'none',
                         'Sec-Fetch-User': '?1',
                         'Cache-Control': 'max-age=0',
+                        'sec-ch-ua': '"Google Chrome";v="131", "Chromium";v="131", "Not_A Brand";v="24"',
+                        'sec-ch-ua-mobile': '?0',
+                        'sec-ch-ua-platform': '"Windows"',
                     },
                 )
 
@@ -460,9 +480,17 @@ class GoogleMapsReviewScraper:
                         get: () => undefined
                     });
 
-                    // plugins配列を追加
+                    // plugins配列を追加（より詳細に）
                     Object.defineProperty(navigator, 'plugins', {
-                        get: () => [1, 2, 3, 4, 5]
+                        get: () => {
+                            const plugins = [
+                                {name: 'Chrome PDF Plugin', filename: 'internal-pdf-viewer'},
+                                {name: 'Chrome PDF Viewer', filename: 'mhjfbmdgcfjbbpaeojofohoefgiehjai'},
+                                {name: 'Native Client', filename: 'internal-nacl-plugin'}
+                            ];
+                            plugins.length = 3;
+                            return plugins;
+                        }
                     });
 
                     // languages配列
@@ -472,7 +500,10 @@ class GoogleMapsReviewScraper:
 
                     // Chrome特有のプロパティ
                     window.chrome = {
-                        runtime: {}
+                        runtime: {},
+                        loadTimes: function() {},
+                        csi: function() {},
+                        app: {}
                     };
 
                     // Permissions API
@@ -482,6 +513,18 @@ class GoogleMapsReviewScraper:
                             Promise.resolve({ state: Notification.permission }) :
                             originalQuery(parameters)
                     );
+
+                    // WebGL vendor/renderer
+                    const getParameter = WebGLRenderingContext.prototype.getParameter;
+                    WebGLRenderingContext.prototype.getParameter = function(parameter) {
+                        if (parameter === 37445) {
+                            return 'Intel Inc.';
+                        }
+                        if (parameter === 37446) {
+                            return 'Intel Iris OpenGL Engine';
+                        }
+                        return getParameter.call(this, parameter);
+                    };
                 """)
                 self._debug("ANTI_DETECT_SCRIPTS", "injected")
 
@@ -489,29 +532,27 @@ class GoogleMapsReviewScraper:
 
                 original_url = url
 
-                # CID形式に変換
-                if 'data=' in url and '!1s0x' in url:
-                    url = self.convert_to_cid_url(url)
-                    self._update_progress("CID形式に変換しました", 12)
-                elif '/maps/place/' in url and '@' not in url and 'data=' not in url:
-                    place_match = re.search(r'/maps/place/([^/?]+)', url)
-                    if place_match:
-                        place_query = urllib.parse.unquote(place_match.group(1).replace('+', ' '))
-                        url = f"https://www.google.com/maps/search/{urllib.parse.quote(place_query)}?hl=ja"
-                        self._update_progress(f"検索URLに変換: {place_query[:20]}", 14)
+                # URLをクリーンアップ（CID変換しない）
+                url = self._clean_url(url)
 
-                if 'hl=' not in url:
-                    separator = '&' if '?' in url else '?'
-                    url = f"{url}{separator}hl=ja"
+                self._debug("URL_FINAL", {"original": original_url[:60], "final": url[:100]})
 
-                self._debug("URL_FINAL", {"original": original_url[:60], "final": url[:80]})
+                # まずGoogleのトップページにアクセス（より自然な動き）
+                self._update_progress("Googleにアクセス中...", 12)
+                page.goto("https://www.google.com/?hl=ja", wait_until='networkidle', timeout=30000)
+                self._random_sleep(2.0, 4.0)
+                self._human_like_mouse_move(page)
 
                 # ページアクセス
                 self._update_progress("ページにアクセス中...", 15)
-                self._debug("PAGE_LOAD_START", url[:80])
+                self._debug("PAGE_LOAD_START", url[:100])
                 page.goto(url, wait_until='networkidle', timeout=60000)
-                page.wait_for_timeout(8000)
-                self._debug("PAGE_LOAD_COMPLETE", "waited 8s")
+                self._random_sleep(3.0, 5.0)
+                self._human_like_mouse_move(page)
+
+                # 追加の待機（JavaScriptの実行を待つ）
+                page.wait_for_timeout(5000)
+                self._debug("PAGE_LOAD_COMPLETE", "waited with random delay")
 
                 page_title = page.title() or "タイトルなし"
                 current_url = page.url
@@ -536,43 +577,45 @@ class GoogleMapsReviewScraper:
                         try:
                             btn = page.locator(sel).first
                             if btn.count() > 0 and btn.is_visible():
+                                self._random_sleep(0.5, 1.5)
                                 btn.click()
                                 consent_clicked = True
                                 self._update_progress("同意ボタンをクリック", 17)
-                                page.wait_for_timeout(3000)
+                                self._random_sleep(2.0, 4.0)
                                 break
                         except:
                             continue
 
                 self._debug("CONSENT_RESULT", {"clicked": consent_clicked})
                 if consent_clicked:
-                    page.wait_for_timeout(2000)
+                    self._random_sleep(1.0, 2.0)
                     self._capture_page_state(page, "AFTER_CONSENT")
 
                     if 'consent' in page.url.lower():
                         self._debug("CONSENT_REDIRECT_NEEDED", "retrying URL")
                         page.goto(url, wait_until='networkidle', timeout=60000)
-                        page.wait_for_timeout(8000)
+                        self._random_sleep(3.0, 5.0)
 
                 # 検索結果ページ処理
-                is_cid_url = '?cid=' in url or '&cid=' in url
                 is_search_page = '/maps/search/' in url
-                store_found = is_cid_url
+                store_found = '/maps/place/' in page.url
 
                 self._debug("URL_TYPE_CHECK", {
-                    "is_cid_url": is_cid_url,
                     "is_search_page": is_search_page,
-                    "store_found": store_found
+                    "store_found": store_found,
+                    "current_url": page.url[:80]
                 })
 
-                if is_search_page:
+                if is_search_page and not store_found:
                     self._update_progress("検索結果から店舗を選択中...", 18)
+                    self._random_sleep(1.0, 2.0)
                     try:
                         first_result = page.locator('a[href*="/maps/place/"]').first
                         if first_result.count() > 0:
+                            self._human_like_mouse_move(page)
                             first_result.click()
                             store_found = True
-                            page.wait_for_timeout(8000)
+                            self._random_sleep(3.0, 5.0)
                     except:
                         pass
 
@@ -582,7 +625,7 @@ class GoogleMapsReviewScraper:
                             if results.count() > 0:
                                 results.click()
                                 store_found = True
-                                page.wait_for_timeout(8000)
+                                self._random_sleep(3.0, 5.0)
                         except:
                             pass
 
@@ -615,8 +658,10 @@ class GoogleMapsReviewScraper:
                     try:
                         tab = page.locator(sel).first
                         if tab.count() > 0 and tab.is_visible():
+                            self._human_like_mouse_move(page)
+                            self._random_sleep(0.5, 1.5)
                             tab.click()
-                            page.wait_for_timeout(8000)
+                            self._random_sleep(3.0, 5.0)
                             reviews_tab_found = True
                             self._debug("REVIEWS_TAB_FOUND", {"selector": sel, "success": True})
                             self._update_progress("口コミタブを開きました", 28)
@@ -636,13 +681,14 @@ class GoogleMapsReviewScraper:
                 try:
                     sort_btn = page.locator('button[data-value="Sort"]').first
                     if sort_btn.count() > 0 and sort_btn.is_visible():
+                        self._random_sleep(0.5, 1.0)
                         sort_btn.click()
-                        page.wait_for_timeout(2000)
+                        self._random_sleep(1.0, 2.0)
                         newest = page.locator('div[role="menuitemradio"]:has-text("新しい順")').first
                         if newest.count() > 0:
                             newest.click()
                             sort_changed = True
-                            page.wait_for_timeout(3000)
+                            self._random_sleep(2.0, 3.0)
                 except Exception as e:
                     self._debug("SORT_CHANGE_FAILED", str(e)[:50])
                 self._debug("SORT_CHANGED", sort_changed)
