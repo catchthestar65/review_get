@@ -11,12 +11,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     wget \
     gnupg \
     ca-certificates \
-    # フォント（正しいパッケージ名を使用）
+    # フォント（Debian Trixieで利用可能なもののみ）
     fonts-noto-cjk \
     fonts-liberation \
-    fonts-unifont \
-    fonts-ubuntu \
     fonts-freefont-ttf \
+    fontconfig \
     # Chromium依存ライブラリ
     libnss3 \
     libnspr4 \
