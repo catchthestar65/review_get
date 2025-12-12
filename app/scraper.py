@@ -67,6 +67,51 @@ class GoogleMapsReviewScraper:
         except Exception as e:
             self._debug(f"PAGE_STATE_ERROR_{label}", str(e))
 
+    def convert_to_cid_url(self, url: str) -> str:
+        """
+        URLをCID形式に変換する
+        CID形式は完全版ページを表示し、クチコミタブが確実に表示される
+
+        Args:
+            url: Google MapsのURL
+
+        Returns:
+            CID形式のURL、または変換できない場合は元のURL
+        """
+        self._debug("URL_CONVERT_INPUT", url[:80])
+
+        # CIDを抽出 (0x....:0x....)
+        cid_match = re.search(r'!1s(0x[0-9a-f]+:0x[0-9a-f]+)', url)
+        if cid_match:
+            cid_hex = cid_match.group(1)
+            self._debug("CID_HEX_FOUND", cid_hex)
+
+            try:
+                # 後半の16進数を10進数に変換
+                hex_parts = cid_hex.split(':')
+                hex_part = hex_parts[1][2:]  # '0x'を除去
+                cid_decimal = int(hex_part, 16)
+
+                # CID形式のURLを生成
+                cid_url = f"https://www.google.com/maps?cid={cid_decimal}&hl=ja"
+                self._debug("CID_URL_GENERATED", cid_url)
+                return cid_url
+
+            except Exception as e:
+                self._debug("CID_CONVERT_ERROR", str(e))
+
+        # CIDが見つからない場合、entry/g_epパラメータを削除してみる
+        self._debug("CID_NOT_FOUND", "trying parameter cleanup")
+        cleaned_url = re.sub(r'[?&](entry|g_ep)=[^&]*', '', url)
+        if '?' not in cleaned_url:
+            cleaned_url = cleaned_url.replace('&', '?', 1)
+        if 'hl=' not in cleaned_url:
+            separator = '&' if '?' in cleaned_url else '?'
+            cleaned_url = f"{cleaned_url}{separator}hl=ja"
+
+        self._debug("URL_CONVERT_OUTPUT", cleaned_url[:80])
+        return cleaned_url
+
     def setup_driver(self) -> webdriver.Chrome:
         """Chrome WebDriverのセットアップ（元のeminal_mac_完全版と同じ設定）"""
         self._update_progress("ChromeDriverをセットアップ中...", 5)
@@ -448,25 +493,28 @@ class GoogleMapsReviewScraper:
         driver = self.setup_driver()
 
         try:
-            # 日本語設定
             original_url = url
-            if 'hl=' not in url:
-                separator = '&' if '?' in url else '?'
-                url = f"{url}{separator}hl=ja"
-            self._debug("URL_MODIFIED", {"original": original_url[:80], "modified": url[:80]})
 
-            # /maps/place/店舗名 形式を /maps/search/店舗名 形式に変換
-            # （座標がないplace URLは検索として処理する方が確実）
-            url_converted = False
-            if '/maps/place/' in url and '@' not in url and 'data=' not in url:
-                # URLから店舗名を抽出
+            # CID形式に変換（完全版ページを表示するため）
+            # CIDが含まれるURLの場合、CID形式に変換してクチコミタブを確実に表示
+            if 'data=' in url and '!1s0x' in url:
+                url = self.convert_to_cid_url(url)
+                self._update_progress("CID形式に変換しました", 12)
+
+            # /maps/place/店舗名 形式（座標なし）を /maps/search/店舗名 形式に変換
+            elif '/maps/place/' in url and '@' not in url and 'data=' not in url:
                 place_match = re.search(r'/maps/place/([^/?]+)', url)
                 if place_match:
                     place_query = urllib.parse.unquote(place_match.group(1).replace('+', ' '))
-                    url = f"https://www.google.com/maps/search/{urllib.parse.quote(place_query)}"
-                    url_converted = True
+                    url = f"https://www.google.com/maps/search/{urllib.parse.quote(place_query)}?hl=ja"
                     self._update_progress(f"検索URLに変換: {place_query[:20]}", 14)
-            self._debug("URL_CONVERSION", {"converted": url_converted, "final_url": url[:80]})
+
+            # 日本語設定を追加（まだない場合）
+            if 'hl=' not in url:
+                separator = '&' if '?' in url else '?'
+                url = f"{url}{separator}hl=ja"
+
+            self._debug("URL_FINAL", {"original": original_url[:60], "final": url[:80]})
 
             self._update_progress(f"ページにアクセス中...", 15)
             self._debug("PAGE_LOAD_START", url[:80])
@@ -544,18 +592,18 @@ class GoogleMapsReviewScraper:
                 self._capture_page_state(driver, "AFTER_CONSENT")
                 self._update_progress(f"同意後タイトル: {page_title[:25]}", 18)
 
-            # 検索結果ページ判定（座標付きURLは直接店舗ページなので除外）
-            # 座標付きURL例: /@35.6931021,139.6988854,17z/
-            has_coordinates = '/@' in url and 'z/' in url
-            is_search_page = '/maps/search/' in url or ('/maps/place/' in url and not has_coordinates)
-            store_found = False
+            # 検索結果ページ判定
+            # CID形式 (?cid=) は直接店舗ページなので検索不要
+            # 検索URL (/maps/search/) は検索結果から選択が必要
+            is_cid_url = '?cid=' in url or '&cid=' in url
+            is_search_page = '/maps/search/' in url
+            store_found = is_cid_url  # CIDの場合は既に店舗ページ
 
             self._debug("URL_TYPE_CHECK", {
                 "url_sample": url[:60],
-                "has_at_sign": '/@' in url,
-                "has_z_slash": 'z/' in url,
-                "has_coordinates": has_coordinates,
-                "is_search_page": is_search_page
+                "is_cid_url": is_cid_url,
+                "is_search_page": is_search_page,
+                "store_found": store_found
             })
 
             if is_search_page:
